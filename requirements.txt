@@ -1,7 +1,8 @@
 ffmpeg==1.4
-datasets>=2.6.1
+datasets==2.6.1
 transformers==4.26.0
 librosa==0.8.1
-evaluate>=0.30
+evaluate==0.4.0
 jiwer==2.5.1
 gradio==3.16.2
+torch==1.13.1
