@@ -126,6 +126,9 @@ def main():
 
     print(dataset)
 
+    #dataset["train"] = dataset["train"].select(list(range(0, 10)))
+    #dataset["test"] = dataset["test"].select(list(range(0, 10)))
+    #print(dataset)
 
     feature_extractor = WhisperFeatureExtractor.from_pretrained(args.model_name_or_path)
 
