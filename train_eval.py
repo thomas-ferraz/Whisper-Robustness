@@ -156,8 +156,8 @@ def main():
 
     dataset = DatasetDict()
 
-    dataset["train"] = load_dataset(args.dataset, lang_to_id[args.lang], split="train", streaming=bool(args.dataset_streaming))
-    dataset["test"] = load_dataset(args.dataset, lang_to_id[args.lang], split="validation", streaming=bool(args.dataset_streaming))
+    dataset["train"] = load_dataset(args.dataset, lang_to_id[args.lang], split="train+validation", streaming=bool(args.dataset_streaming))
+    dataset["test"] = load_dataset(args.dataset, lang_to_id[args.lang], split="test", streaming=bool(args.dataset_streaming))
 
     print(dataset)
 
