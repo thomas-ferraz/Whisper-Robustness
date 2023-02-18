@@ -22,6 +22,7 @@ import os
 from datasets import load_dataset, DatasetDict, Audio
 from transformers import WhisperFeatureExtractor, WhisperTokenizer, WhisperProcessor, WhisperForConditionalGeneration
 from transformers import Seq2SeqTrainer, Seq2SeqTrainingArguments
+from transformers import EarlyStoppingCallback
 import evaluate
 
 import logging
@@ -228,6 +229,8 @@ def main():
         save_total_limit=2,
     )
 
+    early_stop = EarlyStoppingCallback(3, 1.0)
+
     trainer = Seq2SeqTrainer(
         args=training_args,
         model=model,
@@ -235,6 +238,7 @@ def main():
         eval_dataset=dataset["test"],
         data_collator=data_collator,
         compute_metrics=compute_metrics_func,
+        callbacks=[early_stop],
         tokenizer=processor.feature_extractor,
     )
 
@@ -245,10 +249,12 @@ def main():
     print("End History")
     with open(os.path.join(args.output_dir,'training_logg.json'), 'w') as file:
         file.write(json.dumps(logic_steps, indent=4))
-        print(f"Logging history saved at: {args.output_dir,'training_logg.json'}")
+        print(f"Logging history saved at: {os.path.join(args.output_dir,'training_logg.json')}")
 
     metrics = trainer.evaluate()
     print(metrics)
+
+    trainer.save_model()
 
 
 if __name__ == '__main__':
