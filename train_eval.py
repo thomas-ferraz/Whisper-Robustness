@@ -225,6 +225,7 @@ def main():
         metric_for_best_model="wer",
         greater_is_better=False,
         push_to_hub=False,
+        save_total_limit=2,
     )
 
     trainer = Seq2SeqTrainer(
