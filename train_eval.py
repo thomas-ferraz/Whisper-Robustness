@@ -17,6 +17,7 @@ from dataclasses import dataclass
 from typing import Any, Dict, List, Union
 from functools import partial
 import json
+import os
 
 from datasets import load_dataset, DatasetDict, Audio
 from transformers import WhisperFeatureExtractor, WhisperTokenizer, WhisperProcessor, WhisperForConditionalGeneration
@@ -44,12 +45,42 @@ def arg_parse() -> argparse.Namespace:
     ) #maybe do a boolean
 
     parser.add_argument(
-        "--output_dir", type=str, help="", default="model"
+        "--output_dir", type=str, help="", default="./model"
     )
-    # List of args
-    # model
-    # language
-    # dataset
+    parser.add_argument(
+        "--test_cpu_mode", type=bool, help="", default=False
+    )
+    parser.add_argument(
+        "--per_device_train_batch_size", type=int, help="", default=32
+    )
+    parser.add_argument(
+        "--gradient_accumulation_steps", type=int, help="Increase by 2x for every 2x decrease in batch size", default=1
+    )
+    parser.add_argument(
+        "--learning_rate", type=float, help="", default=1e-5
+    )
+    parser.add_argument(
+        "--warmup_steps", type=int, help="", default=500
+    )
+    parser.add_argument(
+        "--max_steps", type=int, help="", default=4000
+    )
+    parser.add_argument(
+        "--gradient_checkpointing", type=int, help="", default=1
+    )
+    parser.add_argument(
+        "--fp16", type=int, help="", default=1
+    )
+    parser.add_argument(
+        "--per_device_eval_batch_size", type=int, help="", default=8
+    )
+    parser.add_argument(
+        "--eval_steps", type=int, help="", default=200
+    )
+    parser.add_argument(
+        "--logging_steps", type=int, help="", default=20
+    )
+    # TO DO - Help comments in the arguments
     args = parser.parse_args()
     return args
 
@@ -126,9 +157,15 @@ def main():
 
     print(dataset)
 
-    #dataset["train"] = dataset["train"].select(list(range(0, 10)))
-    #dataset["test"] = dataset["test"].select(list(range(0, 10)))
-    #print(dataset)
+    if args.test_cpu_mode:
+        dataset["train"] = dataset["train"].select(list(range(0, 10)))
+        dataset["test"] = dataset["test"].select(list(range(0, 10)))
+        print(dataset)
+        args.max_steps=10
+        args.fp16=0
+        args.warmup_steps=1
+        args.eval_steps=2
+        args.logging_steps=1
 
     feature_extractor = WhisperFeatureExtractor.from_pretrained(args.model_name_or_path)
 
@@ -169,20 +206,20 @@ def main():
 
     training_args = Seq2SeqTrainingArguments(
         output_dir= args.output_dir,# "./whisper-small-gl",  # change to a repo name of your choice
-        per_device_train_batch_size=32,
-        gradient_accumulation_steps=1,  # increase by 2x for every 2x decrease in batch size
-        learning_rate=1e-5,
-        warmup_steps=1,#500,
-        max_steps=10, #1000, #4000,
-        gradient_checkpointing=True,
-        #fp16=True,
+        per_device_train_batch_size=args.per_device_train_batch_size,
+        gradient_accumulation_steps=args.gradient_accumulation_steps,  # increase by 2x for every 2x decrease in batch size
+        learning_rate=args.learning_rate,
+        warmup_steps=args.warmup_steps,#500,
+        max_steps=args.max_steps, #1000, #4000,
+        gradient_checkpointing=bool(args.gradient_checkpointing),
+        fp16=bool(args.fp16),
         evaluation_strategy="steps",
-        per_device_eval_batch_size=8,
+        per_device_eval_batch_size=args.per_device_eval_batch_size,
         predict_with_generate=True,
         generation_max_length=225,
-        save_steps=100, #1000
-        eval_steps=2,#100, #1000
-        logging_steps=1,#25,
+        save_steps=args.eval_steps, #100, #1000
+        eval_steps=args.eval_steps,#100, #1000
+        logging_steps=args.logging_steps,#25,
         #report_to=["tensorboard"],
         load_best_model_at_end=True,
         metric_for_best_model="wer",
@@ -203,10 +240,11 @@ def main():
     trainer.train()
 
     print("History")
-    logic_steps= trainer.state.log_history
+    logic_steps=trainer.state.log_history
     print("End History")
-    with open('model/training_logg.json', 'w') as file:
+    with open(os.path.join(args.output_dir,'training_logg.json'), 'w') as file:
         file.write(json.dumps(logic_steps, indent=4))
+        print(f"Logging history saved at: {args.output_dir,'training_logg.json'}")
 
     metrics = trainer.evaluate()
     print(metrics)
