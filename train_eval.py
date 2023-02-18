@@ -81,6 +81,9 @@ def arg_parse() -> argparse.Namespace:
     parser.add_argument(
         "--logging_steps", type=int, help="", default=20
     )
+    parser.add_argument(
+        "--dataset_streaming", type=int, help="", default=0
+    )
     # TO DO - Help comments in the arguments
     args = parser.parse_args()
     return args
@@ -153,8 +156,8 @@ def main():
 
     dataset = DatasetDict()
 
-    dataset["train"] = load_dataset(args.dataset, lang_to_id[args.lang], split="train+validation")
-    dataset["test"] = load_dataset(args.dataset, lang_to_id[args.lang], split="test")
+    dataset["train"] = load_dataset(args.dataset, lang_to_id[args.lang], split="train+validation", streaming=bool(args.dataset_streaming))
+    dataset["test"] = load_dataset(args.dataset, lang_to_id[args.lang], split="test", streaming=bool(args.dataset_streaming))
 
     print(dataset)
 
