@@ -1,3 +1,4 @@
+
 # Copyright (c) 2023 Thomas Palmeira Ferraz, Hélène Maxcici, Teysir Baoueb
 #
 # Licensed under the MIT License (the "License");
@@ -88,8 +89,8 @@ def arg_parse() -> argparse.Namespace:
     args = parser.parse_args()
     return args
 
-lang_to_whisper = {"gl":"Galician"}
-lang_to_id = {"gl":"gl_es"}
+lang_to_whisper = {"gl":"Galician", "fr":"French", "fa":"Persian"}
+lang_to_id = {"gl":"gl_es", "fr":"fr_fr", "fa":"fa_ir"}
 
 def prepare_dataset(batch, feature_extractor, tokenizer):
     # load and resample audio data from 48 to 16kHz
