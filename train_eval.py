@@ -157,13 +157,21 @@ def main():
 
     dataset = DatasetDict()
 
-    dataset["train"] = load_dataset(args.dataset, lang_to_id[args.lang], split="train+validation", streaming=bool(args.dataset_streaming))
-    dataset["test"] = load_dataset(args.dataset, lang_to_id[args.lang], split="test", streaming=bool(args.dataset_streaming))
+    dataset["train"] = load_dataset(args.dataset, lang_to_id[args.lang],
+                                    split="train",
+                                    streaming=bool(args.dataset_streaming))
+    dataset["val"] = load_dataset(args.dataset, lang_to_id[args.lang],
+                                  split="train",
+                                    streaming=bool(args.dataset_streaming))
+    dataset["test"] = load_dataset(args.dataset, lang_to_id[args.lang],
+                                   split="test",
+                                   streaming=bool(args.dataset_streaming))
 
     print(dataset)
 
     if args.test_cpu_mode:
         dataset["train"] = dataset["train"].select(list(range(0, 10)))
+        dataset["val"] = dataset["val"].select(list(range(0, 10)))
         dataset["test"] = dataset["test"].select(list(range(0, 10)))
         print(dataset)
         args.max_steps=10
@@ -239,7 +247,7 @@ def main():
         args=training_args,
         model=model,
         train_dataset=dataset["train"],
-        eval_dataset=dataset["test"],
+        eval_dataset=dataset["val"],
         data_collator=data_collator,
         compute_metrics=compute_metrics_func,
         callbacks=[early_stop],
@@ -249,14 +257,18 @@ def main():
     trainer.train()
 
     print("History")
-    logic_steps=trainer.state.log_history
+    log_steps = trainer.state.log_history.copy()
     print("End History")
-    with open(os.path.join(args.output_dir,'training_logg.json'), 'w') as file:
-        file.write(json.dumps(logic_steps, indent=4))
-        print(f"Logging history saved at: {os.path.join(args.output_dir,'training_logg.json')}")
 
-    metrics = trainer.evaluate()
-    print(metrics)
+    test_metrics = trainer.evaluate(dataset["test"])
+    #print(test_metrics)
+    test_metrics = {k.replace("eval","test"):v for k,v in test_metrics.items()}
+    print(test_metrics)
+    log_steps.append(test_metrics)
+
+    with open(os.path.join(args.output_dir,'training_logg.json'), 'w') as file:
+        file.write(json.dumps(log_steps, indent=4))
+        print(f"Logging history saved at: {os.path.join(args.output_dir,'training_logg.json')}")
 
     trainer.save_model()
 
