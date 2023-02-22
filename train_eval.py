@@ -85,6 +85,9 @@ def arg_parse() -> argparse.Namespace:
     parser.add_argument(
         "--dataset_streaming", type=int, help="", default=0
     )
+    parser.add_argument(
+        "--train", type=int, help="", default=1
+    )
     # TO DO - Help comments in the arguments
     args = parser.parse_args()
     return args
@@ -254,7 +257,8 @@ def main():
         tokenizer=processor.feature_extractor,
     )
 
-    trainer.train()
+    if bool(args.train):
+        trainer.train()
 
     print("History")
     log_steps = trainer.state.log_history.copy()
