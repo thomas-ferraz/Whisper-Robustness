@@ -88,6 +88,12 @@ def arg_parse() -> argparse.Namespace:
     parser.add_argument(
         "--train", type=int, help="", default=1
     )
+    parser.add_argument(
+        "--patience", type=int, help="", default=3
+    )
+    parser.add_argument(
+        "--early_stopping_threshold", type=float, help="", default=1.0
+    )
     # TO DO - Help comments in the arguments
     args = parser.parse_args()
     return args
@@ -244,7 +250,8 @@ def main():
         save_total_limit=2,
     )
 
-    early_stop = EarlyStoppingCallback(3, 1.0)
+    early_stop = EarlyStoppingCallback(early_stopping_patience=args.patience,
+                                       early_stopping_threshold=args.early_stopping_threshold)
 
     trainer = Seq2SeqTrainer(
         args=training_args,
