@@ -37,6 +37,9 @@ def arg_parse() -> argparse.Namespace:
         "--model_name_or_path", type=str, help="Initial model", default="openai/whisper-tiny"
     )
     parser.add_argument(
+        "--tokenizer_name", type=str, help="Initial tokenizer", default=None
+    )
+    parser.add_argument(
         "--dataset", type=str, help="Dataset name", default="google/fleurs"
     )
     parser.add_argument(
@@ -190,14 +193,17 @@ def main():
         args.eval_steps=2
         args.logging_steps=1
 
-    feature_extractor = WhisperFeatureExtractor.from_pretrained(args.model_name_or_path)
+    if not args.tokenizer_name:
+        args.tokenizer_name = args.model_name_or_path
+
+    feature_extractor = WhisperFeatureExtractor.from_pretrained(args.tokenizer_name)
 
 
-    tokenizer = WhisperTokenizer.from_pretrained(args.model_name_or_path, language=lang_to_whisper[args.lang], task=args.task)
+    tokenizer = WhisperTokenizer.from_pretrained(args.tokenizer_name, language=lang_to_whisper[args.lang], task=args.task)
 
 
 
-    processor = WhisperProcessor.from_pretrained(args.model_name_or_path, language=lang_to_whisper[args.lang], task=args.task)
+    processor = WhisperProcessor.from_pretrained(args.tokenizer_name, language=lang_to_whisper[args.lang], task=args.task)
 
 
 
