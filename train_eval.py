@@ -65,6 +65,9 @@ def arg_parse() -> argparse.Namespace:
         "--learning_rate", type=float, help="", default=1e-5
     )
     parser.add_argument(
+        "--weight_decay", type=float, help="", default=0.0
+    )
+    parser.add_argument(
         "--warmup_steps", type=int, help="", default=500
     )
     parser.add_argument(
@@ -255,6 +258,7 @@ def main():
         greater_is_better=False,
         push_to_hub=False,
         save_total_limit=2,
+        weight_decay=args.weight_decay,
     )
 
     early_stop = EarlyStoppingCallback(early_stopping_patience=args.patience,
