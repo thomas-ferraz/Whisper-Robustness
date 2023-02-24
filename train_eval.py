@@ -98,6 +98,9 @@ def arg_parse() -> argparse.Namespace:
         "--patience", type=int, help="", default=3
     )
     parser.add_argument(
+        "--use_peft", type=int, help="", default=0
+    )
+    parser.add_argument(
         "--early_stopping_threshold", type=float, help="", default=1.0
     )
     # TO DO - Help comments in the arguments
@@ -234,10 +237,18 @@ def main():
     model.config.forced_decoder_ids = None
     model.config.suppress_tokens = []
 
+    if bool(args.use_peft):
+        from peft import prepare_model_for_int8_training
+        model = prepare_model_for_int8_training(model, output_embedding_layer_name="proj_out")
+        from peft import LoraConfig, PeftModel, LoraModel, LoraConfig, get_peft_model
+        config = LoraConfig(r=32, lora_alpha=64, target_modules=["q_proj", "v_proj"], lora_dropout=0.05, bias="none")
+        model = get_peft_model(model, config)
+        model.print_trainable_parameters()
+
 
 
     training_args = Seq2SeqTrainingArguments(
-        output_dir= args.output_dir,# "./whisper-small-gl",  # change to a repo name of your choice
+        output_dir=args.output_dir,# "./whisper-small-gl",  # change to a repo name of your choice
         per_device_train_batch_size=args.per_device_train_batch_size,
         gradient_accumulation_steps=args.gradient_accumulation_steps,  # increase by 2x for every 2x decrease in batch size
         learning_rate=args.learning_rate,
@@ -259,6 +270,8 @@ def main():
         push_to_hub=False,
         save_total_limit=2,
         weight_decay=args.weight_decay,
+        remove_unused_columns=False if bool(args.use_peft) else True, # required as the PeftModel forward doesn't have the signature of the wrapped model's forward
+        label_names=["labels"] if bool(args.use_peft) else None, # required as the PeftModel forward doesn't have the signature of the wrapped model's forward
     )
 
     early_stop = EarlyStoppingCallback(early_stopping_patience=args.patience,
