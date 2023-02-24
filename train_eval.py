@@ -13,6 +13,7 @@ from typing import Any, Dict, List, Union
 from functools import partial
 import json
 import os
+import numpy as np
 
 import torch
 from datasets import load_dataset, DatasetDict, Audio
@@ -23,7 +24,12 @@ from transformers import EarlyStoppingCallback
 import evaluate
 
 import audio_degrader as ad
-import numpy as np
+
+from data_utils import (prepare_audio, apply_degradation,
+                                prepare_dataset,
+                                DataCollator,
+                                DataCollatorwithDegradation,
+                                evaluate_robustness)
 
 import logging
 
@@ -88,8 +94,14 @@ def arg_parse() -> argparse.Namespace:
         "--train", type=int, help="0->eval, 1->train+eval", default=1
     )
     parser.add_argument(
-        "--degradation_path", type=str, help="path to degradation json", 
+      "--eval_robustness", type=int, help="", default=0,
+    )
+    parser.add_argument(
+        "--degradations_path", type=str, help="path to degradation json", 
         default=None,
+    )
+    parser.add_argument(
+        "--debug", type=str, help="", default=0
     )
     parser.add_argument
     # TO DO - Help comments in the arguments
@@ -98,104 +110,6 @@ def arg_parse() -> argparse.Namespace:
 
 lang_to_whisper = {"gl":"Galician", "fr":"French", "fa":"Persian"}
 lang_to_id = {"gl":"gl_es", "fr":"fr_fr", "fa":"fa_ir"}
-
-def prepare_audio(samples):
-    # Normalize
-    if np.abs(samples).max() > 1:
-      rms_samples = np.sqrt(np.sum(np.power(samples, 2)))
-      samples = samples/rms_samples
-    return samples
-
-def apply_degradation(degradation: List[str], samples, 
-                      sample_rate_in: int = 16e3):
-  """
-  Function to apply degradations on one audio.
-  Inputs:
-  - degradation: List of strings. String format name_degradation,param1,param2
-  - samples: Numpy array of samples
-  - sample_rate_in: Sample rate of the audio. If not equal to 16k Hz, will be resampled
-  """
-  # Prep audio
-  audio = ad.AudioArray(samples_in = samples, 
-                      sample_rate_in = sample_rate_in,
-                      sample_rate_process= 16e3, # Default rate
-                      bits = 64) # Default resolution
-  # Loop over degradations and apply
-  degradation = ad.ParametersParser.parse_degradations_args(degradation)
-  for d in degradation:
-    audio.apply_degradation(d)
-
-  return audio.samples, int(audio.sample_rate)
-
-@dataclass
-class DataCollatorSpeechSeq2SeqWithPadding:
-
-    def __init__(self, processor: Any, 
-                 tokenizer: Any,
-                 feature_extractor: Any,
-                 list_degradations: List[Dict[str,float]] = None):
-      self.processor = processor
-      self.tokenizer = tokenizer
-      self.feature_extractor = feature_extractor
-      self.list_degradations = list_degradations
-    
-    def __call__(self, batch) -> Dict[str, torch.Tensor]:
-
-        input_features = []
-        label_features = []
-
-        for data in batch:
-          samples  = data["audio"]["array"]
-          sample_rate_in = data["audio"]["sampling_rate"]
-          samples = prepare_audio(samples)
-
-          if self.list_degradations is not None:
-            for dict_degradation in self.list_degradations:
-                degradation = dict_degradation["degradation"]
-                prob = dict_degradation["prob"]
-                assert 0 <= prob <= 1
-                # For random data augmentation
-                sample = np.random.uniform()
-                if sample > prob:
-                  # Resample
-                  samples, sample_rate = apply_degradation(["resample,16000"], 
-                                                          samples, sample_rate_in)
-                else:
-                  # Apply degradation with probability = prob
-                  samples, sample_rate = apply_degradation(degradation, samples, 
-                                                    sample_rate_in)
-          else:
-            # Resample
-            samples, sample_rate = apply_degradation(["resample,16000"], 
-                                                     samples, sample_rate_in)
-
-          assert sample_rate == 16e3
-          # Test Audio for small batch size
-          #ipd.display(ipd.Audio(samples, rate = sample_rate))
-          
-          # Compute log-Mel input features from input audio array 
-          input_features.append({"input_features": 
-                                 self.feature_extractor(samples, 
-                                 sampling_rate=sample_rate).input_features[0]})
-          # Tokenize transcription
-          label = self.tokenizer(data["raw_transcription"]).input_ids
-          label_features.append({"input_ids": label})
-
-        batch = self.processor.feature_extractor.pad(input_features, return_tensors="pt")
-        # pad the labels to max length
-        labels_batch = self.processor.tokenizer.pad(label_features, return_tensors="pt")
-
-        # replace padding with -100 to ignore loss correctly
-        labels = labels_batch["input_ids"].masked_fill(labels_batch.attention_mask.ne(1), -100)
-
-        # if bos token is appended in previous tokenization step,
-        # cut bos token here as it's append later anyways
-        if (labels[:, 0] == self.processor.tokenizer.bos_token_id).all().cpu().item():
-            labels = labels[:, 1:]
-
-        batch["labels"] = labels
-
-        return batch
 
 def compute_metrics(pred, tokenizer, metric_wer):
     pred_ids = pred.predictions
@@ -212,31 +126,41 @@ def compute_metrics(pred, tokenizer, metric_wer):
 
     return {"wer": wer}
 
+
 def main():
 
     args = arg_parse()
-
-    # Load datasets
+    ## Load datasets
     dataset = DatasetDict()
-
     train = bool(args.train)
     if train:
+      # Load train and val only for training
       dataset["train"] = load_dataset(args.dataset, lang_to_id[args.lang], 
-                                      split="train+validation", 
+                                      split="train", 
+                                      streaming=bool(args.dataset_streaming))
+      dataset["val"] = load_dataset(args.dataset, lang_to_id[args.lang], 
+                                      split="validation", 
                                       streaming=bool(args.dataset_streaming))
     dataset["test"] = load_dataset(args.dataset, lang_to_id[args.lang], 
                                    split="test", 
                                    streaming=bool(args.dataset_streaming))
     print(dataset)
-    # Load degradations
-    if args.degradation_path is not None:
-      with open(args.degradation_path) as json_file:
+    ## Load degradations
+    eval_robustness = bool(args.eval_robustness)
+    if (args.degradations_path is not None) and (not eval_robustness):
+      with open(args.degradations_path) as json_file:
         list_degradations = json.load(json_file)
     else:
       list_degradations = None
-    # Debug settings
+    
+    ## Debug settings
+    if bool(args.debug):
+      for s, d in dataset.items():
+        dataset[s] = dataset[s].select(list(range(0, 10)))
+
     if args.test_cpu_mode:
         dataset["train"] = dataset["train"].select(list(range(0, 10)))
+        dataset["val"] = dataset["val"].select(list(range(0, 10)))
         dataset["test"] = dataset["test"].select(list(range(0, 10)))
         print(dataset)
         args.max_steps=10
@@ -244,35 +168,43 @@ def main():
         args.warmup_steps=1
         args.eval_steps=2
         args.logging_steps=1
-    # 
+    ## Intanciate Whisper Pipeline
     feature_extractor = WhisperFeatureExtractor.from_pretrained(
-        args.model_name_or_path)
+                                                        args.model_name_or_path)
     tokenizer = WhisperTokenizer.from_pretrained(args.model_name_or_path, 
-                            language=lang_to_whisper[args.lang], task=args.task)
-    #
+                                                language=lang_to_whisper[args.lang], 
+                                                task=args.task)
     processor = WhisperProcessor.from_pretrained(args.model_name_or_path, 
-                            language=lang_to_whisper[args.lang], task=args.task)
-
-    data_collator = DataCollatorSpeechSeq2SeqWithPadding(processor=processor,
-                      tokenizer=tokenizer, feature_extractor=feature_extractor,
-                      list_degradations=list_degradations)
-
+                                                language=lang_to_whisper[args.lang], 
+                                                task=args.task)
+    model = WhisperForConditionalGeneration.from_pretrained(
+                                                        args.model_name_or_path) 
+    ## Metric
     metric = evaluate.load("wer")
     compute_metrics_func = partial(compute_metrics, tokenizer=tokenizer, 
-                                   metric_wer=metric)
+                                metric_wer=metric)
 
-    model = WhisperForConditionalGeneration.from_pretrained(
-        args.model_name_or_path)
-
-    model.config.forced_decoder_ids = None
-    model.config.suppress_tokens = []
-
+    ## Original preprocessing pipeline (No data augmentation) 
+    if (list_degradations is None) and (not eval_robustness):
+      dataset = dataset.cast_column("audio", Audio(sampling_rate=16000))
+      prepare_dataset_func = partial(prepare_dataset, tokenizer=tokenizer, 
+                                            feature_extractor=feature_extractor)
+      dataset = dataset.map(prepare_dataset_func, 
+                            remove_columns=dataset.column_names["train"], 
+                            num_proc=2)
+      data_collator = DataCollator(processor=processor)
+    
+    ## Preprocessing pipeline with data augmentation
+    else:
+      data_collator = DataCollatorwithDegradation(processor, tokenizer,
+                                                  feature_extractor,
+                                                  list_degradations)
     if train:
       # Perform training and evaluation
       training_args = Seq2SeqTrainingArguments(
-          output_dir= args.output_dir,# "./whisper-small-gl",  # change to a repo name of your choice
+          output_dir= args.output_dir,# "./whisper-small-gl"
           per_device_train_batch_size=args.per_device_train_batch_size,
-          gradient_accumulation_steps=args.gradient_accumulation_steps,  # increase by 2x for every 2x decrease in batch size
+          gradient_accumulation_steps=args.gradient_accumulation_steps, 
           learning_rate=args.learning_rate,
           warmup_steps=args.warmup_steps,#500,
           max_steps=args.max_steps, #1000, #4000,
@@ -294,13 +226,14 @@ def main():
           remove_unused_columns = False,
       )
 
-      early_stop = EarlyStoppingCallback(3, 1.0)
+      early_stop = EarlyStoppingCallback(early_stopping_patience=args.patience,
+                                       early_stopping_threshold=args.early_stopping_threshold)
 
       trainer = Seq2SeqTrainer(
           args=training_args,
           model=model,
           train_dataset=dataset["train"],
-          eval_dataset=dataset["test"],
+          eval_dataset=dataset["val"],
           data_collator=data_collator,
           compute_metrics=compute_metrics_func,
           callbacks=[early_stop],
@@ -310,25 +243,29 @@ def main():
       trainer.train()
 
       print("History")
-      logic_steps=trainer.state.log_history
+      log_steps = trainer.state.log_history.copy()
       print("End History")
-      with open(os.path.join(args.output_dir,'training_logg.json'), 'w') as file:
-          file.write(json.dumps(logic_steps, indent=4))
-          print(f"Logging history saved at: {os.path.join(args.output_dir,'training_logg.json')}")
+      # No data augmentations for evaluation
+      data_collator.list_degradations = None
+      test_metrics = trainer.evaluate(dataset["test"])
+      test_metrics = {k.replace("eval","test"):v for k,v in test_metrics.items()}
+      print(test_metrics)
+      log_steps.append(test_metrics)
 
-      metrics = trainer.evaluate()
-      print(metrics)
+      with open(os.path.join(args.output_dir,'training_logg.json'), 'w') as file:
+          file.write(json.dumps(log_steps, indent=4))
+          print(f"Logging history saved at: {os.path.join(args.output_dir,'training_logg.json')}")
 
       trainer.save_model()
 
     else:
       # Only perform evaluation
       training_args = Seq2SeqTrainingArguments(
-          output_dir= "./whisper-small-gl",
+          output_dir= args.output_dir,
           fp16=True,
-          per_device_eval_batch_size=64,
+          per_device_eval_batch_size=args.per_device_train_batch_size,
           predict_with_generate=True,
-          generation_max_length=225, #?
+          generation_max_length=225, 
           metric_for_best_model="wer",
           remove_unused_columns = False,
           push_to_hub=False,
@@ -342,8 +279,15 @@ def main():
           tokenizer=processor.feature_extractor,
       )
 
-      metrics = trainer.evaluate()
-      print(metrics)
+      if eval_robustness:
+        evaluate_robustness(trainer=trainer, 
+                            data_collator=data_collator, 
+                            degradation_path=args.degradations_path)
+
+      else:
+        test_metrics = trainer.evaluate()
+        test_metrics = {k.replace("eval","test"):v for k,v in test_metrics.items()}
+        print(test_metrics)
 
 
 if __name__ == '__main__':
