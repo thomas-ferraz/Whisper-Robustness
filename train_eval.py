@@ -92,6 +92,9 @@ def arg_parse() -> argparse.Namespace:
         "--dataset_streaming", type=int, help="", default=0
     )
     parser.add_argument(
+        "--fix_forced_decoder_ids", type=int, help="", default=0
+    )
+    parser.add_argument(
         "--train", type=int, help="", default=1
     )
     parser.add_argument(
@@ -234,7 +237,8 @@ def main():
 
     model = WhisperForConditionalGeneration.from_pretrained(args.model_name_or_path)
 
-    model.config.forced_decoder_ids = None
+    if not bool(args.fix_forced_decoder_ids):
+        model.config.forced_decoder_ids = None
     model.config.suppress_tokens = []
 
     if bool(args.use_peft):
