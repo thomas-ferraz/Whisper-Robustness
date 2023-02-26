@@ -230,7 +230,7 @@ def main():
       architecture = model_name_or_path
       print(f"\nLoaded model: pretrained/{args.size}/{args.lang}\n")
 
-    ## Intanciate Whisper Pipeline
+    ## Instanciate Whisper Pipeline
     feature_extractor = WhisperFeatureExtractor.from_pretrained(model_name_or_path)
     tokenizer = WhisperTokenizer.from_pretrained(architecture, 
                                                 language=lang_to_whisper[args.lang], 
@@ -262,8 +262,8 @@ def main():
     else:
       data_collator = DataCollatorwithDegradation(processor, tokenizer,
                                                   feature_extractor,
-                                                  list_degradations,
-                                                  dataset=args.dataset)
+                                                  args.dataset,
+                                                  list_degradations)
     if train:
       # Perform training and evaluation
       training_args = Seq2SeqTrainingArguments(

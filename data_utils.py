@@ -14,6 +14,11 @@ import audio_degrader as ad
 
 import logging
 
+dataset_text_name = {
+  "google/fleurs": "raw_transcription",
+  "librispeech": "text"
+}
+
 def prepare_audio(samples):
     # Normalize
     if np.abs(samples).max() > 1:
@@ -21,7 +26,7 @@ def prepare_audio(samples):
       samples = samples/rms_samples
     return samples
 
-def prepare_dataset(batch, feature_extractor, tokenizer):
+def prepare_dataset(batch, feature_extractor, tokenizer, dataset):
     # load and resample audio data from 48 to 16kHz
     audio = batch["audio"]
 
@@ -30,7 +35,8 @@ def prepare_dataset(batch, feature_extractor, tokenizer):
                       sampling_rate=audio["sampling_rate"]).input_features[0]
 
     # encode target text to label ids
-    batch["labels"] = tokenizer(batch["raw_transcription"]).input_ids
+    text_name = dataset_text_name[dataset]
+    batch["labels"] = tokenizer(batch[text_name]).input_ids
     return batch
 
 def apply_degradation(degradation: List[str], samples, 
@@ -105,11 +111,13 @@ class DataCollatorwithDegradation:
     def __init__(self, processor: Any, 
                  tokenizer: Any,
                  feature_extractor: Any,
+                 dataset: str,
                  list_degradations: List[Dict[str,float]] = None):
       self.processor = processor
       self.tokenizer = tokenizer
       self.feature_extractor = feature_extractor
       self.list_degradations = list_degradations
+      self.dataset = dataset
     
     def __call__(self, batch) -> Dict[str, torch.Tensor]:
 
@@ -150,7 +158,8 @@ class DataCollatorwithDegradation:
                                  self.feature_extractor(samples, 
                                  sampling_rate=sample_rate).input_features[0]})
           # Tokenize transcription
-          label = self.tokenizer(data["raw_transcription"]).input_ids
+          text_name = dataset_text_name[self.dataset]
+          label = self.tokenizer(data[text_name]).input_ids
           label_features.append({"input_ids": label})
 
         batch = self.processor.feature_extractor.pad(input_features, return_tensors="pt")
