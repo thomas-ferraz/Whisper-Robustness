@@ -178,7 +178,8 @@ class DataCollatorwithDegradation:
 
         return batch
 
-def evaluate_robustness(trainer, data_collator, degradation_path):
+def evaluate_robustness(trainer, data_collator, degradation_path,
+                       output_dir=""):
   # Load degradations
   with open(degradation_path) as json_file:
         list_degradations = json.load(json_file)
@@ -235,5 +236,5 @@ def evaluate_robustness(trainer, data_collator, degradation_path):
     print(pd.Series(dict_result, name= split_str[0]))
     # Serializing json
     json_object = json.dumps(dict_result_deg, indent=4)
-    with open("results_evaluate_robustness.json", "w") as outfile:
+    with open(output_dir+"/results_evaluate_robustness.json", "w") as outfile:
       outfile.write(json_object)
