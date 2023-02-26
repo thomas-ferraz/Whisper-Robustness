@@ -158,9 +158,7 @@ def compute_metrics(pred, tokenizer, metric_wer, normalize = "none"):
       label_str = [tokenizer._normalize(text) for text in label_str]
     elif normalize == "lower":
       pred_str = [text.lower() for text in pred_str]
-      label_str = [text.lower() for text in label_str] 
-
-    print(pred_str)     
+      label_str = [text.lower() for text in label_str]     
 
     wer = 100 * metric_wer.compute(predictions=pred_str, references=label_str)
     
