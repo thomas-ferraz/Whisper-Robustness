@@ -112,7 +112,7 @@ def arg_parse() -> argparse.Namespace:
       "--predict", type=str, help="", default=0,
     )
     parser.add_argument(
-      "--normalize", type=int, help="normalized wer", default=0,
+      "--normalize", type=str, help="normalized wer", default="none",
     )
     parser.add_argument
     # TO DO - Help comments in the arguments
@@ -142,7 +142,7 @@ def load_finetuned(size="tiny", language="French"):
                  use_cookies=False)
 
 
-def compute_metrics(pred, tokenizer, metric_wer, normalize = False):
+def compute_metrics(pred, tokenizer, metric_wer, normalize = "none"):
     pred_ids = pred.predictions
     label_ids = pred.label_ids
 
@@ -153,12 +153,14 @@ def compute_metrics(pred, tokenizer, metric_wer, normalize = False):
     pred_str = tokenizer.batch_decode(pred_ids, skip_special_tokens=True)
     label_str = tokenizer.batch_decode(label_ids, skip_special_tokens=True)
 
-    if normalize:
-      pred_str = [tokenizer._normalize(pred_str[0])]
-      label_str = [tokenizer._normalize(label_str[0])]
-    else:
-      pred_str = [pred_str[0].lower()]
-      label_str = [label_str[0].lower()]      
+    if normalize == "whisper":
+      pred_str = [tokenizer._normalize(text) for text in pred_str]
+      label_str = [tokenizer._normalize(text) for text in label_str]
+    elif normalize == "lower":
+      pred_str = [text.lower() for text in pred_str]
+      label_str = [text.lower() for text in label_str] 
+
+    print(pred_str)     
 
     wer = 100 * metric_wer.compute(predictions=pred_str, references=label_str)
     
@@ -169,8 +171,7 @@ def main():
 
     args = arg_parse()
     ## Verif params
-    assert args.size in ["tiny", "base"], "Supported model sizes are tiny and base." 
-
+    assert args.normalize in ["none", "whisper", "lower"],  "Normalize can be none, whisper or lower." 
     ## Load datasets
     dataset = DatasetDict()
     train = bool(args.train)
@@ -197,7 +198,7 @@ def main():
     ## Debug settings
     if bool(args.debug):
       for s, d in dataset.items():
-        dataset[s] = dataset[s].select(list(range(0, 5)))
+        dataset[s] = dataset[s].select(list(range(0, 10)))
 
     if args.test_cpu_mode:
         dataset["train"] = dataset["train"].select(list(range(0, 10)))
@@ -213,6 +214,7 @@ def main():
     ## Load pretrained/finetuned
     if bool(args.finetuned):
       # load from drive
+      assert args.size in ["tiny", "base"], "Supported model sizes are tiny and base." 
       try:
         load_finetuned(args.size, lang_to_whisper[args.lang])
       except Exception as e:
@@ -244,7 +246,7 @@ def main():
     metric = evaluate.load("wer")
     compute_metrics_func = partial(compute_metrics, tokenizer=tokenizer, 
                                                     metric_wer=metric,
-                                                    normalize=bool(args.normalize))
+                                                    normalize=args.normalize)
 
     ## Original preprocessing pipeline (No data augmentation) 
     if (list_degradations is None) and (not eval_robustness):
@@ -262,7 +264,7 @@ def main():
     else:
       data_collator = DataCollatorwithDegradation(processor, tokenizer,
                                                   feature_extractor,
-                                                  args.dataset,
+                                                  args.dataset,#)
                                                   list_degradations)
     if train:
       # Perform training and evaluation
@@ -349,7 +351,6 @@ def main():
           compute_metrics=compute_metrics_func,
           tokenizer=processor.feature_extractor,
       )
-      # TODO: save results in output directory
       if eval_robustness:
         evaluate_robustness(trainer=trainer, 
                             data_collator=data_collator, 
@@ -368,7 +369,7 @@ def main():
         df_predictions["labels"] = labels
         df_predictions["transcribed"] = transcriptions
 
-        if bool(args.normalize):
+        if args.normalize == "whisper":
           df_predictions["labels_norm"] = [tokenizer._normalize(text) 
                                             for text in labels]
           df_predictions["transcribed_norm"] = [tokenizer._normalize(text) 

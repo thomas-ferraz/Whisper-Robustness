@@ -16,7 +16,7 @@ import logging
 
 dataset_text_name = {
   "google/fleurs": "raw_transcription",
-  "librispeech": "text"
+  "librispeech_asr": "text"
 }
 
 def prepare_audio(samples):
@@ -66,10 +66,10 @@ def apply_degradation(degradation: List[str], samples,
   if save_file is not None:
     tfm = sox.Transformer()
     tfm.set_output_format(rate=audio.sample_rate, 
-                          bits=32, channels=2)
+                          bits=64, channels=1)
     tfm.build_file(input_array=audio.samples, 
                     sample_rate_in=audio.sample_rate,
-                    output_filepath='output.wav'
+                    output_filepath=save_file
     )
   if verbose>0:
     print(f"\nApplied degradations in {et-st:.3f} seconds.")
@@ -138,6 +138,7 @@ class DataCollatorwithDegradation:
                 sample = np.random.uniform()
                 if sample > prob:
                   # Resample
+                  print(f"ouput_{data.id}.wav")
                   samples, sample_rate = apply_degradation(["resample,16000"], 
                                                           samples, sample_rate_in)
                 else:
@@ -151,6 +152,8 @@ class DataCollatorwithDegradation:
 
           assert sample_rate == 16e3
           # Test Audio for small batch size
+          import matplotlib.pyplot as plt
+          plt.plot(samples)
           #ipd.display(ipd.Audio(samples, rate = sample_rate))
           
           # Compute log-Mel input features from input audio array 
