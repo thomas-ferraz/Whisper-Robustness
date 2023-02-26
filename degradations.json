@@ -1,6 +1,6 @@
 [
   {
-    "degradation": ["mix,/usr/local/lib/python3.8/dist-packages/audio_degrader/resources/sounds/ambience-pub.wav,6"],
+    "degradation": ["mix,sounds/ambience-pub.wav,6"],
     "prob": 1
   }
 ]
