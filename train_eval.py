@@ -13,7 +13,9 @@ from typing import Any, Dict, List, Union
 from functools import partial
 import json
 import os
+import gdown
 import numpy as np
+import pandas as pd
 
 import torch
 from datasets import load_dataset, DatasetDict, Audio
@@ -39,8 +41,11 @@ def arg_parse() -> argparse.Namespace:
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
     parser.add_argument(
-        "--model_name_or_path", type=str, help="Initial model", default="openai/whisper-tiny"
+        "--size", type=str, help="Model size", default="tiny"
     )
+    parser.add_argument(
+        "--finetuned", type=int, help="", default=0
+    )    
     parser.add_argument(
         "--dataset", type=str, help="Dataset name", default="google/fleurs"
     )
@@ -94,42 +99,78 @@ def arg_parse() -> argparse.Namespace:
         "--train", type=int, help="0->eval, 1->train+eval", default=1
     )
     parser.add_argument(
-      "--eval_robustness", type=int, help="", default=0,
+        "--eval_robustness", type=int, help="", default=0,
     )
     parser.add_argument(
         "--degradations_path", type=str, help="path to degradation json", 
         default=None,
     )
     parser.add_argument(
-        "--debug", type=str, help="", default=0
+        "--debug", type=int, help="", default=0
+    )
+    parser.add_argument(
+      "--predict", type=str, help="", default=0,
+    )
+    parser.add_argument(
+      "--normalize", type=int, help="normalized wer", default=0,
     )
     parser.add_argument
     # TO DO - Help comments in the arguments
     args = parser.parse_args()
     return args
 
-lang_to_whisper = {"gl":"Galician", "fr":"French", "fa":"Persian"}
-lang_to_id = {"gl":"gl_es", "fr":"fr_fr", "fa":"fa_ir"}
+lang_to_whisper = {"gl":"Galician", 
+                   "fr":"French", 
+                   "fa":"Persian", 
+                   "libri_en": "English"}
+lang_to_id = {"gl":"gl_es", 
+              "fr":"fr_fr", 
+              "fa":"fa_ir", 
+              "libri_en":"clean"}
 
-def compute_metrics(pred, tokenizer, metric_wer):
+def load_finetuned(size="tiny", language="French"):
+  """Download finetuned weights from drive"""
+  if not os.path.isdir("./finetuned"):
+    os.mkdir("./finetuned")
+  # Load dictionary of ids
+  with open("./finetuned_models.json") as file:
+    dict_finetuned = json.load(file)  
+  # Download 
+  for f, file_id in dict_finetuned[size][language].items():
+    gdown.download(f"https://drive.google.com/uc?id={file_id}&confirm=t",
+                 output=f"./finetuned/{f}",
+                 use_cookies=False)
+
+
+def compute_metrics(pred, tokenizer, metric_wer, normalize = False):
     pred_ids = pred.predictions
     label_ids = pred.label_ids
 
     # replace -100 with the pad_token_id
     label_ids[label_ids == -100] = tokenizer.pad_token_id
-
+    
     # we do not want to group tokens when computing the metrics
     pred_str = tokenizer.batch_decode(pred_ids, skip_special_tokens=True)
     label_str = tokenizer.batch_decode(label_ids, skip_special_tokens=True)
 
-    wer = 100 * metric_wer.compute(predictions=pred_str, references=label_str)
+    if normalize:
+      pred_str = [tokenizer._normalize(pred_str[0])]
+      label_str = [tokenizer._normalize(label_str[0])]
+    else:
+      pred_str = [pred_str[0].lower()]
+      label_str = [label_str[0].lower()]      
 
+    wer = 100 * metric_wer.compute(predictions=pred_str, references=label_str)
+    
     return {"wer": wer}
 
 
 def main():
 
     args = arg_parse()
+    ## Verif params
+    assert args.size in ["tiny", "base"], "Supported model sizes are tiny and base." 
+
     ## Load datasets
     dataset = DatasetDict()
     train = bool(args.train)
@@ -156,7 +197,7 @@ def main():
     ## Debug settings
     if bool(args.debug):
       for s, d in dataset.items():
-        dataset[s] = dataset[s].select(list(range(0, 10)))
+        dataset[s] = dataset[s].select(list(range(0, 5)))
 
     if args.test_cpu_mode:
         dataset["train"] = dataset["train"].select(list(range(0, 10)))
@@ -168,27 +209,50 @@ def main():
         args.warmup_steps=1
         args.eval_steps=2
         args.logging_steps=1
+    
+    ## Load pretrained/finetuned
+    if bool(args.finetuned):
+      # load from drive
+      try:
+        load_finetuned(args.size, lang_to_whisper[args.lang])
+      except Exception as e:
+        print("\nFailed to download finetuned weights from Drive." 
+              "Please refresh or try later.\n")
+        print(e)
+        exit()
+      model_name_or_path = "./finetuned"
+      with open("./finetuned/config.json") as file:
+        config = json.load(file)  
+      architecture = config['_name_or_path']
+      print(f"\nLoaded model: finetuned/{args.size}/{args.lang}\n")
+    else:
+      model_name_or_path = "openai/whisper-"+args.size
+      architecture = model_name_or_path
+      print(f"\nLoaded model: pretrained/{args.size}/{args.lang}\n")
+
     ## Intanciate Whisper Pipeline
-    feature_extractor = WhisperFeatureExtractor.from_pretrained(
-                                                        args.model_name_or_path)
-    tokenizer = WhisperTokenizer.from_pretrained(args.model_name_or_path, 
+    feature_extractor = WhisperFeatureExtractor.from_pretrained(model_name_or_path)
+    tokenizer = WhisperTokenizer.from_pretrained(architecture, 
                                                 language=lang_to_whisper[args.lang], 
                                                 task=args.task)
-    processor = WhisperProcessor.from_pretrained(args.model_name_or_path, 
-                                                language=lang_to_whisper[args.lang], 
-                                                task=args.task)
-    model = WhisperForConditionalGeneration.from_pretrained(
-                                                        args.model_name_or_path) 
+    processor = WhisperProcessor(feature_extractor, tokenizer)
+    model = WhisperForConditionalGeneration.from_pretrained(model_name_or_path) 
+    model.config.forced_decoder_ids = None
+    model.config.suppress_tokens = []
+
     ## Metric
     metric = evaluate.load("wer")
     compute_metrics_func = partial(compute_metrics, tokenizer=tokenizer, 
-                                metric_wer=metric)
+                                                    metric_wer=metric,
+                                                    normalize=bool(args.normalize))
 
     ## Original preprocessing pipeline (No data augmentation) 
     if (list_degradations is None) and (not eval_robustness):
       dataset = dataset.cast_column("audio", Audio(sampling_rate=16000))
-      prepare_dataset_func = partial(prepare_dataset, tokenizer=tokenizer, 
-                                            feature_extractor=feature_extractor)
+      prepare_dataset_func = partial(prepare_dataset, 
+                                     tokenizer=tokenizer, 
+                                     feature_extractor=feature_extractor,
+                                     dataset=args.dataset)
       dataset = dataset.map(prepare_dataset_func, 
                             remove_columns=dataset.column_names["train"], 
                             num_proc=2)
@@ -198,7 +262,8 @@ def main():
     else:
       data_collator = DataCollatorwithDegradation(processor, tokenizer,
                                                   feature_extractor,
-                                                  list_degradations)
+                                                  list_degradations,
+                                                  dataset=args.dataset)
     if train:
       # Perform training and evaluation
       training_args = Seq2SeqTrainingArguments(
@@ -259,11 +324,17 @@ def main():
       trainer.save_model()
 
     else:
-      # Only perform evaluation
+      ## Only perform evaluation
+      # Force task and language
+      forced_decoder_ids = processor.get_decoder_prompt_ids(
+                                            language=lang_to_whisper[args.lang], 
+                                            task="transcribe")
+      model.generation_config.forced_decoder_ids = forced_decoder_ids
+      
       training_args = Seq2SeqTrainingArguments(
           output_dir= args.output_dir,
           fp16=True,
-          per_device_eval_batch_size=args.per_device_train_batch_size,
+          per_device_eval_batch_size=args.per_device_eval_batch_size,
           predict_with_generate=True,
           generation_max_length=225, 
           metric_for_best_model="wer",
@@ -278,16 +349,34 @@ def main():
           compute_metrics=compute_metrics_func,
           tokenizer=processor.feature_extractor,
       )
-
+      # TODO: save results in output directory
       if eval_robustness:
         evaluate_robustness(trainer=trainer, 
                             data_collator=data_collator, 
                             degradation_path=args.degradations_path)
 
       else:
-        test_metrics = trainer.evaluate()
-        test_metrics = {k.replace("eval","test"):v for k,v in test_metrics.items()}
-        print(test_metrics)
+        prediction_output = trainer.predict(dataset["test"],
+                                      metric_key_prefix="test")
+        generated_ids = prediction_output.predictions
+        transcriptions = processor.batch_decode(generated_ids, 
+                                                      skip_special_tokens=True)
+        labels = processor.batch_decode(prediction_output.label_ids, 
+                                                    skip_special_tokens=True)
+        df_predictions = pd.DataFrame()
+        df_predictions["labels"] = labels
+        df_predictions["transcribed"] = transcriptions
+
+        if bool(args.normalize):
+          df_predictions["labels_norm"] = [tokenizer._normalize(text) 
+                                            for text in labels]
+          df_predictions["transcribed_norm"] = [tokenizer._normalize(text) 
+                                            for text in transcriptions]
+        
+        df_predictions.to_csv("predictions.csv")
+
+        metrics = prediction_output.metrics
+        print(pd.Series(metrics))
 
 
 if __name__ == '__main__':

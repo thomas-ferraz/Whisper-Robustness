@@ -4,6 +4,7 @@ import time
 from typing import Any, Dict, List, Union
 from dataclasses import dataclass
 import numpy as np
+import pandas as pd
 
 
 import torch
@@ -208,5 +209,22 @@ def evaluate_robustness(trainer, data_collator, degradation_path):
     }
     data_collator.list_degradations = [dict_apply_deg]
     test_metrics = trainer.evaluate()
-    test_metrics = {k.replace("eval","test"):v for k,v in test_metrics.items()}
-    print(test_metrics)
+
+    # Save results
+    split_str = deg_str.split(",")
+    if not split_str[0] in dict_result_deg.keys():
+      dict_result_deg[split_str[0]] = []
+    
+    dict_result = {}
+    for i,p in enumerate(split_str[1:]):
+      dict_result["param"+str(i+1)] = p
+    for k,v in test_metrics.items():
+      dict_result[k.replace("eval_","")] = v
+
+    dict_result_deg[split_str[0]].append(dict_result)
+
+    print(pd.Series(dict_result, name= split_str[0]))
+    # Serializing json
+    json_object = json.dumps(dict_result_deg, indent=4)
+    with open("results_evaluate_robustness.json", "w") as outfile:
+      outfile.write(json_object)
