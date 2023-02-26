@@ -353,7 +353,8 @@ def main():
       if eval_robustness:
         evaluate_robustness(trainer=trainer, 
                             data_collator=data_collator, 
-                            degradation_path=args.degradations_path)
+                            degradation_path=args.degradations_path,
+                            output_dir=args.output_dir)
 
       else:
         prediction_output = trainer.predict(dataset["test"],
@@ -373,7 +374,7 @@ def main():
           df_predictions["transcribed_norm"] = [tokenizer._normalize(text) 
                                             for text in transcriptions]
         
-        df_predictions.to_csv("predictions.csv")
+        df_predictions.to_csv(args.output_dir+"/predictions.csv")
 
         metrics = prediction_output.metrics
         print(pd.Series(metrics))
