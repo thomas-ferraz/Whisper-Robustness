@@ -196,7 +196,7 @@ def evaluate_robustness(trainer, data_collator, degradation_path):
       for param1 in list_param1:
         if "param2" in dict_degradation.keys():
           list_param2 = dict_degradation["param2"]["values"]   
-          name_param2 = dict_degradation["param2"]["values"]    
+          name_param2 = dict_degradation["param2"]["name"]    
 
           for param2 in list_param2:
             deg_str = f"{name_deg},{param1},{param2}"
