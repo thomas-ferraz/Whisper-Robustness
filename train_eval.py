@@ -254,7 +254,7 @@ def main():
                                      feature_extractor=feature_extractor,
                                      dataset=args.dataset)
       dataset = dataset.map(prepare_dataset_func, 
-                            remove_columns=dataset.column_names["train"], 
+                            remove_columns=dataset.column_names["test"], 
                             num_proc=2)
       data_collator = DataCollator(processor=processor)
     
