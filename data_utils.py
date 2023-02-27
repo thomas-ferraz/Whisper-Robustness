@@ -152,8 +152,6 @@ class DataCollatorwithDegradation:
 
           assert sample_rate == 16e3
           # Test Audio for small batch size
-          import matplotlib.pyplot as plt
-          plt.plot(samples)
           #ipd.display(ipd.Audio(samples, rate = sample_rate))
           
           # Compute log-Mel input features from input audio array 
