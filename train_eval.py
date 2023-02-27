@@ -106,6 +106,9 @@ def arg_parse() -> argparse.Namespace:
     parser.add_argument(
         "--early_stopping_threshold", type=float, help="", default=1.0
     )
+    parser.add_argument(
+        "--save_model", type=int, help="", default=1
+    )
     # TO DO - Help comments in the arguments
     args = parser.parse_args()
     return args
@@ -309,7 +312,8 @@ def main():
         file.write(json.dumps(log_steps, indent=4))
         print(f"Logging history saved at: {os.path.join(args.output_dir,'training_logg.json')}")
 
-    trainer.save_model()
+    if bool(args.train) and bool(args.save_model):
+        trainer.save_model()
 
 
 if __name__ == '__main__':
