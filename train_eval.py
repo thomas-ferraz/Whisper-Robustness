@@ -95,6 +95,9 @@ def arg_parse() -> argparse.Namespace:
         "--fix_forced_decoder_ids", type=int, help="", default=0
     )
     parser.add_argument(
+        "--suppress_tokens", type=int, help="", default=0
+    )
+    parser.add_argument(
         "--train", type=int, help="", default=1
     )
     parser.add_argument(
@@ -242,7 +245,8 @@ def main():
 
     if not bool(args.fix_forced_decoder_ids):
         model.config.forced_decoder_ids = None
-    model.config.suppress_tokens = []
+    if not bool(args.suppress_tokens):
+        model.config.suppress_tokens = []
 
     if bool(args.use_peft):
         from peft import prepare_model_for_int8_training
