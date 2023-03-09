@@ -109,13 +109,9 @@ class DataCollator:
 class DataCollatorwithDegradation:
 
     def __init__(self, processor: Any, 
-                 tokenizer: Any,
-                 feature_extractor: Any,
                  dataset: str,
                  list_degradations: List[Dict[str,float]] = None):
       self.processor = processor
-      self.tokenizer = tokenizer
-      self.feature_extractor = feature_extractor
       self.list_degradations = list_degradations
       self.dataset = dataset
     
@@ -156,11 +152,11 @@ class DataCollatorwithDegradation:
           
           # Compute log-Mel input features from input audio array 
           input_features.append({"input_features": 
-                                 self.feature_extractor(samples, 
+                                 self.processor.feature_extractor(samples, 
                                  sampling_rate=sample_rate).input_features[0]})
           # Tokenize transcription
           text_name = dataset_text_name[self.dataset]
-          label = self.tokenizer(data[text_name]).input_ids
+          label = self.processor.tokenizer(data[text_name]).input_ids
           label_features.append({"input_ids": label})
 
         batch = self.processor.feature_extractor.pad(input_features, return_tensors="pt")

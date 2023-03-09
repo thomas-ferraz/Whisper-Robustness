@@ -143,6 +143,7 @@ def load_finetuned(size="tiny", language="French"):
 
 
 def compute_metrics(pred, tokenizer, metric_wer, normalize = "none"):
+    """Compute the metrics"""
     pred_ids = pred.predictions
     label_ids = pred.label_ids
 
@@ -260,8 +261,7 @@ def main():
     
     ## Preprocessing pipeline with data augmentation
     else:
-      data_collator = DataCollatorwithDegradation(processor, tokenizer,
-                                                  feature_extractor,
+      data_collator = DataCollatorwithDegradation(processor,
                                                   args.dataset,#)
                                                   list_degradations)
     if train:
