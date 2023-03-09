@@ -83,6 +83,9 @@ def arg_parse() -> argparse.Namespace:
         "--learning_rate", type=float, help="", default=1e-5
     )
     parser.add_argument(
+        "--weight_decay", type=float, help="", default=0.0
+    )
+    parser.add_argument(
         "--warmup_steps", type=int, help="", default=500
     )
     parser.add_argument(
@@ -125,9 +128,6 @@ def arg_parse() -> argparse.Namespace:
         "--early_stopping_threshold", type=float, help="", default=1.0
     )
     parser.add_argument(
-        "--save_model", type=int, help="", default=1
-    )
-    parser.add_argument(
         "--eval_robustness", type=int, help="", default=0,
     )
     parser.add_argument(
@@ -143,8 +143,6 @@ def arg_parse() -> argparse.Namespace:
     parser.add_argument(
         "--normalize", type=str, help="normalized wer", default="none",
     )
-
-    parser.add_argument
     # TO DO - Help comments in the arguments
     args = parser.parse_args()
     return args
