@@ -84,9 +84,6 @@ def arg_parse() -> argparse.Namespace:
         "--learning_rate", type=float, help="", default=1e-5
     )
     parser.add_argument(
-        "--weight_decay", type=float, help="", default=0.0
-    )
-    parser.add_argument(
         "--warmup_steps", type=int, help="", default=500
     )
     parser.add_argument(
