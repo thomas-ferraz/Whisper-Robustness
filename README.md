@@ -12,7 +12,7 @@ The code is divided mainly into to scripts. The [`train_eval.py`](https://github
 ```
 pip install -r requirements.txt
 ```
-## Evaluate Whisper with Degradations
+## Finetune Whisper 
 ##  Usage
 ```
 python train_eval.py --size tiny --dataset google/fleurs --lang fr --output_dir tiny_fr  --normalize "lower" --train 1 
