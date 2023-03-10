@@ -1,6 +1,7 @@
 # Improving Large-Scale Speech Recognition Robustness by Language Specialization
 
 [IPOL DEMO](https://ipolcore.ipol.im/demo/clientApp/demo.html?id=77777000393)
+
 Latest version: 1.0
 
 The recent [Whisper](https://github.com/openai/whisper/discussions/654) proposes a multi-task weak supervised training on a large-scale dataset collected from the internet. Although the model presents important gains, especially in English, its robustness and limitations in multilingual and low-resource scenarios have not yet been sufficiently explored. In this work, we present a detailed description of this new model; we propose a method to mitigate the performance gap presented in low-resource languages; and we perform an in-depth study of its robustness across different noise types and languages. The results show the effectiveness of language specialization in reducing the performance gap in speech transcription and even in increasing in the model robustness on noisy data.
@@ -16,7 +17,7 @@ pip install -r requirements.txt
 ```
 python train_eval.py --size tiny --dataset google/fleurs --lang fr --output_dir tiny_fr  --normalize "lower" --train 1 
 ```
-|Hyperparameters| Usage                        |
+|Arguments| Usage                        |
 |---------------|------------------------------|
 | `size`          | A string to specify the Whisper model size to use (e.g., tiny, small,..) |
 | `finetuned`     | An integer value to specify whetherto use pre-trained model or the fine-tuned one (0: pre-trained, 1: fine-tuned)|
@@ -93,9 +94,9 @@ For this task, the JSON file should have a different format, similar to [`evalua
 ]
 ```
 ## Authors
-- Thomas Palmeira Ferraz - thomas.palmeira@telecom-paris.fr
-- Helene Maxcici - helene.maxcici@ens-paris-saclay.fr
-- Teysir Baoueb - teysir.baoueb@ensta-paris.fr
+- Thomas Palmeira Ferraz - thomas [dot] palmeira [at] telecom [hyphen] paris [dot] fr
+- Helene Maxcici - helene [dot] maxcici [at] ens [hyphen] paris [hyphen] saclay [dot] fr
+- Teysir Baoueb - teysir [dot] baoueb [at] ensta [hyphen] paris [dot] fr
 
 ## Copyright and license information
 Copyright (c) 2023 Thomas Palmeira Ferraz, Helene Maxcici, Teysir Baoueb
