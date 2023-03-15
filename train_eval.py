@@ -1,15 +1,16 @@
 # Copyright (c) 2023 Thomas Palmeira Ferraz, Helene Maxcici, Teysir Baoueb
 #
-# Licensed under the MIT License (the "License");
-# You may not use this file except in compliance with the License.
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
 #
-# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-# SOFTWARE.
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
 
 import os
 import argparse
@@ -32,6 +33,8 @@ from transformers import (WhisperFeatureExtractor, WhisperTokenizer,
                           WhisperProcessor, WhisperForConditionalGeneration)
 from transformers import Seq2SeqTrainer, Seq2SeqTrainingArguments
 from transformers import EarlyStoppingCallback
+from transformers.models.whisper.english_normalizer import (BasicTextNormalizer,  
+                                                            EnglishTextNormalizer)
 
 import audio_degrader as ad
 
@@ -41,127 +44,36 @@ from data_utils import (prepare_audio, apply_degradation,
                                 DataCollatorwithDegradation,
                                 evaluate_robustness)
 
-
-
-def arg_parse() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(
-        description="Training and evaluation",
-        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
-    )
-    parser.add_argument(
-        "--size", type=str, help="Model size", default="tiny"
-    )
-    parser.add_argument(
-        "--finetuned", type=int, help="0 for Pretrained, 1 for Fintuned", default=0
-    )    
-    parser.add_argument(
-        "--tokenizer_name", type=str, help="Initial tokenizer", default=None
-    )
-    parser.add_argument(
-        "--dataset", type=str, help="Dataset name", default="google/fleurs"
-    )
-    parser.add_argument(
-        "--lang", type=str, help="Language code", default="gl"
-    )
-    parser.add_argument(
-        "--task", type=str, help="Task for fine-tuning", default="transcribe"
-    ) #maybe do a boolean
-
-    parser.add_argument(
-        "--output_dir", type=str, help="", default="./model"
-    )
-    parser.add_argument(
-        "--cpu_mode", type=bool, help="", default=False
-    )
-    parser.add_argument(
-        "--per_device_train_batch_size", type=int, help="", default=32
-    )
-    parser.add_argument(
-        "--gradient_accumulation_steps", type=int, help="Increase by 2x for every 2x decrease in batch size", default=1
-    )
-    parser.add_argument(
-        "--learning_rate", type=float, help="", default=1e-5
-    )
-    parser.add_argument(
-        "--weight_decay", type=float, help="", default=0.0
-    )
-    parser.add_argument(
-        "--warmup_steps", type=int, help="", default=500
-    )
-    parser.add_argument(
-        "--weight_decay", type=float, help="", default=0.0
-    )
-    parser.add_argument(
-        "--max_steps", type=int, help="", default=4000
-    )
-    parser.add_argument(
-        "--gradient_checkpointing", type=int, help="", default=1
-    )
-    parser.add_argument(
-        "--fp16", type=int, help="", default=1
-    )
-    parser.add_argument(
-        "--per_device_eval_batch_size", type=int, help="", default=8
-    )
-    parser.add_argument(
-        "--eval_steps", type=int, help="", default=200
-    )
-    parser.add_argument(
-        "--logging_steps", type=int, help="", default=20
-    )
-    parser.add_argument(
-        "--fix_forced_decoder_ids", type=int, help="", default=0
-    )
-    parser.add_argument(
-        "--suppress_tokens", type=int, help="", default=0
-    )
-    parser.add_argument(
-        "--train", type=int, help="0 for eval, 1 for train+eval", default=1
-    )
-    parser.add_argument(
-        "--patience", type=int, help="", default=3
-    )
-    parser.add_argument(
-        "--use_peft", type=int, help="", default=0
-    )
-    parser.add_argument(
-        "--early_stopping_threshold", type=float, help="", default=1.0
-    )
-    parser.add_argument(
-        "--eval_robustness", type=int, help="", default=0,
-    )
-    parser.add_argument(
-        "--degradations_path", type=str, help="path to degradation json", 
-        default=None,
-    )
-    parser.add_argument(
-        "--debug", type=int, help="", default=0
-    )
-    parser.add_argument(
-        "--predict", type=str, help="", default=0,
-    )
-    parser.add_argument(
-        "--normalize", type=str, help="normalized wer", default="none",
-    )
-    # TO DO - Help comments in the arguments
-    args = parser.parse_args()
-    return args
+# Utils
+def str2bool(v):
+    if isinstance(v, bool):
+        return v
+    if v.lower() in ('yes', 'true', 't', 'y', '1'):
+        return True
+    elif v.lower() in ('no', 'false', 'f', 'n', '0'):
+        return False
+    else:
+        raise argparse.ArgumentTypeError('Boolean value expected.')
 
 lang_to_whisper = {"gl":"Galician", 
                    "fr":"French", 
                    "fa":"Persian", 
-                   "libri_en": "English"}
+                   "en": "English"}
 lang_to_id = {"gl":"gl_es", 
               "fr":"fr_fr", 
               "fa":"fa_ir", 
+              "en": "en_us", 
               "libri_en":"clean"}
 
 def load_finetuned(size="tiny", language="French"):
   """Download finetuned weights from drive"""
+  # Create folder to save results
   if not os.path.isdir("./finetuned"):
     os.mkdir("./finetuned")
+  # Get current folder
+  dirname = os.path.dirname(__file__)
   # Load dictionary of ids
-  with open("./finetuned_models.json") as file:
+  with open(dirname+"/finetuned/finetuned_models_ids.json") as file:
     dict_finetuned = json.load(file)  
   # Download 
   for f, file_id in dict_finetuned[size][language].items():
@@ -170,47 +82,89 @@ def load_finetuned(size="tiny", language="French"):
                  use_cookies=False)
 
 
-def compute_metrics(pred, tokenizer, metric_wer, normalize = "none"):
+def text_normalizer(normalize = "none", spelling_normalizer = None):
+  """
+  Create text normalizer
+  """
+  # Get text normalizer
+  if normalize == "english_normalizer":
+    assert spelling_normalizer is not None
+    normalizer = EnglishTextNormalizer(spelling_normalizer)
+  elif normalize == "basic_normalizer":
+    normalizer = BasicTextNormalizer(remove_diacritics=False,
+                                          split_letters=False)
+  elif normalize == "lower":
+    normalizer = lambda x : x.lower()
+  else:
+    # No normalization
+    normalizer = None
+  
+  return normalizer
 
+class Metrics:
+  """
+  Computes metrics with text normalization option.
+  """
+  def __init__(self, tokenizer, metric_wer, normalize = "none"):
+    """
+    normalize:
+     if english_normalizer, applies full english normalizer
+     if basic_normalizer, applies subset of rules for all languages
+     if lowe, only lower case the text
+     else no normalization is applied
+    """
+    self.tokenizer = tokenizer
+    self.metric_wer = metric_wer
+    self.normalizer = text_normalizer(normalize, 
+                                tokenizer.english_spelling_normalizer)
+
+  def __call__(self, pred, per_sample = False):
     pred_ids = pred.predictions
     label_ids = pred.label_ids
 
-    # replace -100 with the pad_token_id
-    label_ids[label_ids == -100] = tokenizer.pad_token_id
+    # replace -100 with the pad_token_id to be removed
+    label_ids[label_ids == -100] = self.tokenizer.pad_token_id  
+    # remove special tokens
+    pred_list = self.tokenizer.batch_decode(pred_ids, skip_special_tokens=True)
+    label_list = self.tokenizer.batch_decode(label_ids, skip_special_tokens=True)
+    # normalize
+    if self.normalizer is not None:
+      pred_list = [self.normalizer(text) for text in pred_list]
+      label_list = [self.normalizer(text) for text in label_list]
+
+    if not per_sample:
+      wer = 100 * self.metric_wer.compute(predictions=pred_list, 
+                                          references=label_list)
+      return {"wer": wer}
     
-    # we do not want to group tokens when computing the metrics
-    pred_str = tokenizer.batch_decode(pred_ids, skip_special_tokens=True)
-    label_str = tokenizer.batch_decode(label_ids, skip_special_tokens=True)
-
-    if normalize == "whisper":
-      pred_str = [tokenizer._normalize(text) for text in pred_str]
-      label_str = [tokenizer._normalize(text) for text in label_str]
-    elif normalize == "lower":
-      pred_str = [text.lower() for text in pred_str]
-      label_str = [text.lower() for text in label_str]     
-
-    wer = 100 * metric_wer.compute(predictions=pred_str, references=label_str)
-    
-    return {"wer": wer}
-
+    else:
+      wer_list = []
+      for pred, label in zip(pred_list, label_list):
+        wer = self.metric_wer.compute(predictions=[pred], 
+                                      references=[label],
+                                      concatenate_texts=True)
+        wer_list.append(round(100 * wer,2))
+      return {"wer": wer_list,
+              "predictions": pred_list,
+              "references": label_list}
 
 def main():
 
     args = arg_parse()
+
     ## Verif params
-    assert args.size in ["tiny", "base", "small", "medium", "larges"], (
-      "Whisper sizes are 'tiny', 'base', 'small', 'medium' and 'larges'.")
+    assert args.size in ["tiny", "base", "small", "medium", "large"], (
+      "Whisper sizes are 'tiny', 'base', 'small', 'medium' and 'large'.")
     assert args.lang in ["gl","fr","fa","en","libri_en"], ( 
       "Supported languages are: 'gl', 'fr', 'fa', 'en' and 'libri_en'.")
-    assert args.normalize in ["none", "whisper", "lower"], (
-          "Normalize can be none, whisper or lower.")
 
     
     ### Load datasets ###
+    if args.dataset == "librispeech_asr":
+      args.lang = "libri_en"
     dataset = DatasetDict()
     # Load train and validation splits for finetuning
-    train = bool(args.train)
-    if train:
+    if args.train:
       dataset["train"] = load_dataset(args.dataset, lang_to_id[args.lang], 
                                       split="train")
       dataset["val"] = load_dataset(args.dataset, lang_to_id[args.lang], 
@@ -218,9 +172,8 @@ def main():
     # Load test set
     dataset["test"] = load_dataset(args.dataset, lang_to_id[args.lang], 
                                    split="test")
-
     ### Debug settings ###
-    if bool(args.debug):
+    if args.debug:
       print("\nDebug Mode.")
       for s, d in dataset.items():
         dataset[s] = dataset[s].select(list(range(0, 10)))
@@ -229,7 +182,7 @@ def main():
 
     ### Load pretrained/finetuned ###
     # Load finetuned weights and configurations from drive
-    if bool(args.finetuned):
+    if args.finetuned:
       assert args.size in ["tiny", "base"], (
             "Supported finetuned model sizes are tiny and base.")
       try:
@@ -262,8 +215,7 @@ def main():
         args.logging_steps=1
 
     ### Load degradations ###
-    eval_robustness = bool(args.eval_robustness)
-    if (args.degradations_path is not None) and (not eval_robustness):
+    if (args.degradations_path is not None) and (not args.multiple_eval):
       with open(args.degradations_path) as json_file:
         list_degradations = json.load(json_file)
     else:
@@ -281,7 +233,7 @@ def main():
     # Build Whisper architecture + load weights
     model = WhisperForConditionalGeneration.from_pretrained(model_name_or_path) 
     # Force task and language
-    if bool(args.fix_forced_decoder_ids):
+    if args.fix_forced_decoder_ids:
       forced_decoder_ids = processor.get_decoder_prompt_ids(
                                       language=lang_to_whisper[args.lang], 
                                       task="transcribe")
@@ -294,9 +246,9 @@ def main():
 
     ### Prepare metric ###
     metric = evaluate.load("wer")
-    compute_metrics_func = partial(compute_metrics, tokenizer=tokenizer, 
-                                                    metric_wer=metric,
-                                                    normalize=args.normalize)
+    compute_metrics = Metrics(tokenizer=tokenizer, 
+                              metric_wer=metric,
+                              normalize=args.normalize)
 
     ### Use PEFT ###
     if bool(args.use_peft):
@@ -310,7 +262,7 @@ def main():
 
 
     ### Original preprocessing pipeline (No data augmentation) ###
-    if (list_degradations is None) and (not eval_robustness):
+    if (list_degradations is None) and (not args.multiple_eval):
       # Preprocess audio: resamples
       dataset = dataset.cast_column("audio", Audio(sampling_rate=16000))
       # Extract features: compute log-magnitude Mel Spectrogram
@@ -331,7 +283,7 @@ def main():
                                                   args.dataset,
                                                   list_degradations)
     ### Finetune ###
-    if train:
+    if args.train:
       # Perform training and evaluation
       # Refere to https://huggingface.co/docs/transformers/v4.20.1/en/main_classes/trainer#transformers.Seq2SeqTrainingArguments
       training_args = Seq2SeqTrainingArguments(
@@ -371,7 +323,7 @@ def main():
           train_dataset=dataset["train"],
           eval_dataset=dataset["val"],
           data_collator=data_collator,
-          compute_metrics=compute_metrics_func,
+          compute_metrics=compute_metrics,
           callbacks=[early_stop],
           tokenizer=processor.feature_extractor,
       )
@@ -420,38 +372,66 @@ def main():
           model=model,
           eval_dataset=dataset["test"],
           data_collator=data_collator,
-          compute_metrics=compute_metrics_func,
+          compute_metrics=compute_metrics,
           tokenizer=processor.feature_extractor,
       )
       ### Evaluate robustness: loop over degradations ###
-      if eval_robustness:
+      if args.multiple_eval:
         evaluate_robustness(trainer=trainer, 
                             data_collator=data_collator, 
                             degradation_path=args.degradations_path,
                             output_dir=args.output_dir)
 
       else:
-        ### Evaluate on a single degradation ###
-        prediction_output = trainer.predict(dataset["test"],
-                                      metric_key_prefix="test")
-        generated_ids = prediction_output.predictions
+        ### Evaluate once on Test Dataset ###
+        prediction_output = trainer.predict(test_dataset=dataset["test"],
+                                            metric_key_prefix="test",
+                                            max_length=225,
+                                            num_beams=1) #Greedy search
         # Inverse tokenize predicted transcription
-        transcriptions = processor.batch_decode(generated_ids, 
-                                                      skip_special_tokens=True)
+        transcriptions = processor.batch_decode(prediction_output.predictions, 
+                                                skip_special_tokens=True)
         # Inverse tokenize target transcription
-        labels = processor.batch_decode(prediction_output.label_ids, 
-                                                    skip_special_tokens=True)
+        labels = processor.batch_decode(prediction_output.label_ids,
+                                        skip_special_tokens=True)
+        metrics_dict = compute_metrics(pred=prediction_output, per_sample=True)
         # Save predictions and targets in dataframe
-        df_predictions = pd.DataFrame()
-        df_predictions["labels"] = labels
-        df_predictions["transcribed"] = transcriptions
+        df_predictions = pd.DataFrame(data = list(zip(labels, 
+                                                      transcriptions,
+                                                      metrics_dict["references"],
+                                                      metrics_dict["predictions"],
+                                                      metrics_dict["wer"])),
+                                      columns = ["labels", 
+                                                "transcribed",
+                                                "labels_norm",
+                                                "transcribed_norm",
+                                                "wer"],
+                                      index = dataset["test"]["id"]) # Returned in order
         # Save normalized text
-        if args.normalize in ["whisper", "lower"]:
-          df_predictions["labels_norm"] = [tokenizer._normalize(text) 
-                                            for text in labels]
-          df_predictions["transcribed_norm"] = [tokenizer._normalize(text) 
+        """
+        if args.normalize != "none":
+          normalizer = text_normalizer(args.normalize , 
+                                       tokenizer.english_spelling_normalizer)
+          df_predictions["labels_norm"] = [normalizer(text) for text in labels]
+          df_predictions["transcribed_norm"] = [normalizer(text) 
                                             for text in transcriptions]
-        
+        # Compute wer per sample
+        col_pred = "tra"
+        df_predictions["wer"] = 100 * df_predictions.apply(
+                    lambda r: metric_wer.compute(predictions=r["transcribed_norm"], 
+                                                  references=label_str))
+        """
+        # Add metadata to results
+        if args.merge_dataset:
+          drop_columns = []
+          for column in dataset["test"].column_names:
+            for s in ["text", "transcri", "path","audio"]:
+              if s in column:
+                drop_columns.append(column)
+          df_predictions = df_predictions.join(
+                    dataset["test"].to_pandas().drop(
+                      columns=drop_columns).set_index("id"))
+
         df_predictions.to_csv(args.output_dir+"/predictions.csv")
 
         # Compute WER
@@ -459,6 +439,145 @@ def main():
         print("\n***** Evaluation Results *****")
         print(pd.Series(metrics))
 
+def arg_parse() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        description="Training and Evaluation",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+    )
+    # Basic arguments
+    parser.add_argument(
+        "--size", type=str, default="tiny",
+        choices=['tiny', 'base', 'small', 'medium', 'large'],
+        help="The size of the Whisper Architecture.",
+    )
+    parser.add_argument(
+        "--finetuned", type=str2bool, default=True, 
+        help="If True, load finetuned weights. Else, load pretrained models."
+    )
+    parser.add_argument(
+        "--dataset", type=str, default="google/fleurs",
+        choices=['google/fleurs', 'librispeech_asr'],
+        help="Dataset name.",
+    )
+    parser.add_argument(
+        "--lang", type=str, default="gl",
+        choices=['en','fr','gl','fa','es'],
+        help="Language code.",
+    )
+    parser.add_argument(
+        "--output_dir", type=str, default="./model",
+        help="Paths to save results."
+    )
+    parser.add_argument(
+        "--train", type=str2bool, default=False,
+        help="True for finetuning and False for Evaluation.",
+    )
+    parser.add_argument(
+        "--normalize", type=str, default="none",
+        choices=["english_normalizer", "basic_normalizer", "lower", "none"],
+        help="Normalizer to apply on text before evaluation.", 
+    )
+    # Evaluation
+    parser.add_argument(
+        "--per_device_eval_batch_size", type=int, default=8,
+        help="",
+    )
+    parser.add_argument(
+        "--multiple_eval", type=str2bool, default=False,
+        help=("If False, the dataset is evaluated once w/o degradation. "+
+              "Else, multiple evaluations are performed with different combinations "+ 
+              "of degradations applied to the given dataset. In this case, "+
+              "--degradation_path is required."), 
+    )
+    parser.add_argument(
+        "--degradations_path", type=str, default=None,
+        help=("Path to a json file containing the degradations. "+
+              "The format of this file differs between a single evaluation or "+ 
+              "multiple ones. Please check the README for more."),
+    )
+    parser.add_argument(
+        "--merge_dataset", type=str2bool, default=False,
+        help= "If True, and single evaluation, add dataset information to predictions."
+    )
+    # Finetuning
+    parser.add_argument(
+        "--per_device_train_batch_size", type=int, help="", default=32
+    )
+    parser.add_argument(
+        "--learning_rate", type=float, default=1e-5,
+        help="Learning rate to specify for finetuning.",
+    )
+    parser.add_argument(
+        "--warmup_steps", type=int, default=500,
+        help="Warmup steps for finetuning.",
+    )
+    parser.add_argument(
+        "--weight_decay", type=float, default=0.0,
+        help="Weight decay for finetuning.",
+    )
+    parser.add_argument(
+        "--max_steps", type=int, help="", default=4000
+    )
+    parser.add_argument(
+        "--patience", type=int, default=3,
+        help="Patience for Early Stopping."
+    )
+    parser.add_argument(
+        "--early_stopping_threshold", type=float, default=1.0,
+        help="Early sopping threshold.", 
+    )
+    parser.add_argument(
+        "--gradient_accumulation_steps", type=int, default=1,
+        help="Increase by 2x for every 2x decrease in batch size."
+    )
+    parser.add_argument(
+        "--gradient_checkpointing", type=int, help="", default=1
+    )
+    parser.add_argument(
+        "--eval_steps", type=int, help="", default=200
+    )
+    parser.add_argument(
+        "--logging_steps", type=int, help="", default=20
+    )
+    parser.add_argument(
+        "--use_peft", type=int, help="", default=0
+    )
+    # Advanced
+    parser.add_argument(
+        "--debug", type=str2bool, default=False,
+        help="If True, the dataset will be reduced to 10 samples.", 
+    )
+    parser.add_argument(
+        "--cpu_mode", type=str2bool, default=False,
+        help="If True, run on CPU.",
+    )
+    parser.add_argument(
+      "--model_name_or_path", type=str, default=None,
+      help="Name of or path to model to load using PreTrainedModel from HuggingFace." 
+    )    
+    parser.add_argument(
+        "--tokenizer_name_or_path", type=str, default=None,
+        help="Name of or path to the tokenizer to load using PreTrainedTokenizer from HuggingFace.",
+    )
+    parser.add_argument(
+        "--task", type=str, default="transcribe",
+        help="Task for fine-tuning."
+    )
+    parser.add_argument(
+        "--fp16", type=str2bool, default=True,
+        help="If True, applies mixed precision.", 
+    )
+    parser.add_argument(
+        "--fix_forced_decoder_ids", type=str2bool, default=True,
+        help=("If True, fixes the task and languages to the chosen ones."+
+              "Else, they will be predicted."),
+    )
+    parser.add_argument(
+        "--suppress_tokens", type=int, help="", default=0
+    )
+
+    args = parser.parse_args()
+    return args
 
 if __name__ == '__main__':
     main()
