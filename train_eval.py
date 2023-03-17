@@ -262,7 +262,8 @@ def main():
 
 
     ### Original preprocessing pipeline (No data augmentation) ###
-    if (list_degradations is None) and (not args.multiple_eval):
+    #if (list_degradations is None) and (not args.multiple_eval):
+    if False:
       # Preprocess audio: resamples
       dataset = dataset.cast_column("audio", Audio(sampling_rate=16000))
       # Extract features: compute log-magnitude Mel Spectrogram
@@ -270,8 +271,7 @@ def main():
                                      tokenizer=tokenizer, 
                                      feature_extractor=feature_extractor,
                                      dataset=args.dataset)
-      dataset = dataset.map(prepare_dataset_func, 
-                            remove_columns=dataset.column_names["test"], 
+      dataset = dataset.map(prepare_dataset_func,
                             num_proc=2)
       # Prep data_collator
       data_collator = DataCollator(processor=processor)
@@ -286,29 +286,43 @@ def main():
     if args.train:
       # Perform training and evaluation
       # Refere to https://huggingface.co/docs/transformers/v4.20.1/en/main_classes/trainer#transformers.Seq2SeqTrainingArguments
+      # Set Hyperparameters
       training_args = Seq2SeqTrainingArguments(
           output_dir=args.output_dir,
+
+          seed=42,
+          data_seed=None,
+          generation_max_length=225,
+
+          max_steps=args.max_steps,
           per_device_train_batch_size=args.per_device_train_batch_size,
           gradient_accumulation_steps=args.gradient_accumulation_steps, 
-          learning_rate=args.learning_rate,
+          learning_rate=args.learning_rate, # Initial learning rate
           warmup_steps=args.warmup_steps,
-          max_steps=args.max_steps, 
+
+          dataloader_num_workers=0,
+
           gradient_checkpointing=bool(args.gradient_checkpointing),
+          weight_decay=args.weight_decay,
           fp16=bool(args.fp16),
-          evaluation_strategy="steps",
+
           per_device_eval_batch_size=args.per_device_eval_batch_size,
-          predict_with_generate=True,
-          generation_max_length=225,
-          save_steps=args.eval_steps, 
+          evaluation_strategy="steps",
           eval_steps=args.eval_steps,
+
+          predict_with_generate=True,
+          
           logging_steps=args.logging_steps,
-          #report_to=["tensorboard"],
+          
+          save_steps=args.eval_steps, # Save checkpoint after save_steps 
+          save_total_limit=2,
+
           load_best_model_at_end=True,
           metric_for_best_model="wer",
           greater_is_better=False,
+          
           push_to_hub=False,
-          save_total_limit=2,
-          weight_decay=args.weight_decay,
+          
           remove_unused_columns= False, 
           label_names=["labels"] if bool(args.use_peft) else None, # required as the PeftModel forward doesn't have the signature of the wrapped model's forward
       )
@@ -406,33 +420,20 @@ def main():
                                                 "labels_norm",
                                                 "transcribed_norm",
                                                 "wer"],
-                                      index = dataset["test"]["id"]) # Returned in order
-        # Save normalized text
-        """
-        if args.normalize != "none":
-          normalizer = text_normalizer(args.normalize , 
-                                       tokenizer.english_spelling_normalizer)
-          df_predictions["labels_norm"] = [normalizer(text) for text in labels]
-          df_predictions["transcribed_norm"] = [normalizer(text) 
-                                            for text in transcriptions]
-        # Compute wer per sample
-        col_pred = "tra"
-        df_predictions["wer"] = 100 * df_predictions.apply(
-                    lambda r: metric_wer.compute(predictions=r["transcribed_norm"], 
-                                                  references=label_str))
-        """
+                                      index = dataset["test"]["path"]) # Returned in order
+        df_predictions["path"] = df_predictions.index.map(os.path.basename)
         # Add metadata to results
         if args.merge_dataset:
           drop_columns = []
           for column in dataset["test"].column_names:
-            for s in ["text", "transcri", "path","audio"]:
+            for s in ["text", "transcri", "audio", "labels", "feature"]:
               if s in column:
                 drop_columns.append(column)
           df_predictions = df_predictions.join(
                     dataset["test"].to_pandas().drop(
-                      columns=drop_columns).set_index("id"))
-
-        df_predictions.to_csv(args.output_dir+"/predictions.csv")
+                      columns=drop_columns).set_index("path"))
+        df_predictions.reset_index(drop=True, inplace=False)
+        df_predictions.to_csv(args.output_dir+"/predictions.csv", index=False)
 
         # Compute WER
         metrics = prediction_output.metrics
@@ -465,7 +466,7 @@ def arg_parse() -> argparse.Namespace:
         help="Language code.",
     )
     parser.add_argument(
-        "--output_dir", type=str, default="./model",
+        "--output_dir", type=str, default="./output",
         help="Paths to save results."
     )
     parser.add_argument(
