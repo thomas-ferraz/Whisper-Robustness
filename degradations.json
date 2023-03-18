@@ -1,6 +1,0 @@
-[
-  {
-    "degradation": ["mix,sounds/ambience-pub.wav,6"],
-    "prob": 1
-  }
-]
