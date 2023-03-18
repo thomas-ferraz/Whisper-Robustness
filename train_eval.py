@@ -19,15 +19,17 @@ import gdown
 import logging
 
 from dataclasses import dataclass
-from typing import Any, Dict, List, Union
+from typing import Any, Dict, List, Union, Optional
 from functools import partial
+import copy
 
 import numpy as np
 import pandas as pd
 
 import torch
+from torch.utils.data import DataLoader
 
-from datasets import load_dataset, DatasetDict, Audio
+from datasets import load_dataset, DatasetDict, Audio, Dataset
 import evaluate
 from transformers import (WhisperFeatureExtractor, WhisperTokenizer, 
                           WhisperProcessor, WhisperForConditionalGeneration)
@@ -35,6 +37,8 @@ from transformers import Seq2SeqTrainer, Seq2SeqTrainingArguments
 from transformers import EarlyStoppingCallback
 from transformers.models.whisper.english_normalizer import (BasicTextNormalizer,  
                                                             EnglishTextNormalizer)
+from transformers.trainer_pt_utils import IterableDatasetShard
+from transformers.utils import is_datasets_available
 
 import audio_degrader as ad
 
@@ -148,16 +152,59 @@ class Metrics:
               "predictions": pred_list,
               "references": label_list}
 
+class Seq2SeqTrainerwithAugmentation(Seq2SeqTrainer):
+    def get_eval_dataloader(self, eval_dataset: Optional[Dataset] = None) -> DataLoader:
+        """
+        Returns the evaluation [`~torch.utils.data.DataLoader`].
+        Subclass and override this method if you want to inject some custom behavior.
+        Args:
+            eval_dataset (`torch.utils.data.Dataset`, *optional*):
+                If provided, will override `self.eval_dataset`. If it is a [`~datasets.Dataset`], columns not accepted
+                by the `model.forward()` method are automatically removed. It must implement `__len__`.
+        """
+        if eval_dataset is None and self.eval_dataset is None:
+            raise ValueError("Trainer: evaluation requires an eval_dataset.")
+        eval_dataset = eval_dataset if eval_dataset is not None else self.eval_dataset
+        data_collator = copy.deepcopy(self.data_collator)
+        data_collator.list_degradations = None
+
+        if is_datasets_available() and isinstance(eval_dataset, Dataset):
+            eval_dataset = self._remove_unused_columns(eval_dataset, description="evaluation")
+        else:
+            data_collator = self._get_collator_with_removed_columns(data_collator, description="evaluation")
+
+        if isinstance(eval_dataset, torch.utils.data.IterableDataset):
+            if self.args.world_size > 1:
+                eval_dataset = IterableDatasetShard(
+                    eval_dataset,
+                    batch_size=self.args.per_device_eval_batch_size,
+                    drop_last=self.args.dataloader_drop_last,
+                    num_processes=self.args.world_size,
+                    process_index=self.args.process_index,
+                )
+            return DataLoader(
+                eval_dataset,
+                batch_size=self.args.eval_batch_size,
+                collate_fn=data_collator,
+                num_workers=self.args.dataloader_num_workers,
+                pin_memory=self.args.dataloader_pin_memory,
+            )
+
+        eval_sampler = self._get_eval_sampler(eval_dataset)
+
+        return DataLoader(
+            eval_dataset,
+            sampler=eval_sampler,
+            batch_size=self.args.eval_batch_size,
+            collate_fn=data_collator,
+            drop_last=self.args.dataloader_drop_last,
+            num_workers=self.args.dataloader_num_workers,
+            pin_memory=self.args.dataloader_pin_memory,
+        )
+
 def main():
 
     args = arg_parse()
-
-    ## Verif params
-    assert args.size in ["tiny", "base", "small", "medium", "large"], (
-      "Whisper sizes are 'tiny', 'base', 'small', 'medium' and 'large'.")
-    assert args.lang in ["gl","fr","fa","en","libri_en"], ( 
-      "Supported languages are: 'gl', 'fr', 'fa', 'en' and 'libri_en'.")
-
     
     ### Load datasets ###
     if args.dataset == "librispeech_asr":
@@ -199,10 +246,13 @@ def main():
         config = json.load(file)  
       architecture = config['_name_or_path']
       print(f"\nLoaded model: finetuned/{args.size}/{args.lang}\n")
-    # Load pretrained weights from Hugging Face
     else:
-      # Set path of loaded model
-      model_name_or_path = "openai/whisper-"+args.size
+      # Load pretrained weights from Hugging Face
+      if args.model_name_or_path is None:
+        # Set path of loaded model
+        model_name_or_path = "openai/whisper-"+args.size
+      else:
+        model_name_or_path = args.model_name_or_path
       architecture = model_name_or_path
       print(f"\nLoaded model: pretrained/{args.size}/{args.lang}\n")
 
@@ -232,6 +282,7 @@ def main():
     processor = WhisperProcessor(feature_extractor, tokenizer)
     # Build Whisper architecture + load weights
     model = WhisperForConditionalGeneration.from_pretrained(model_name_or_path) 
+    model.config.use_cache = False # Turn off warning
     # Force task and language
     if args.fix_forced_decoder_ids:
       forced_decoder_ids = processor.get_decoder_prompt_ids(
@@ -241,7 +292,7 @@ def main():
     else: 
       model.config.forced_decoder_ids = None # To be predicted
     # Remove supressed tokens
-    if not bool(args.suppress_tokens):
+    if not args.suppress_tokens:
         model.config.suppress_tokens = []
 
     ### Prepare metric ###
@@ -251,19 +302,19 @@ def main():
                               normalize=args.normalize)
 
     ### Use PEFT ###
-    if bool(args.use_peft):
-      from peft import prepare_model_for_int8_training
-      model = prepare_model_for_int8_training(model, output_embedding_layer_name="proj_out")
+    if args.use_peft:
+      #from peft import prepare_model_for_int8_training
+      #model = prepare_model_for_int8_training(model, output_embedding_layer_name="proj_out")
       from peft import LoraConfig, PeftModel, LoraModel, LoraConfig, get_peft_model
-      config = LoraConfig(r=32, lora_alpha=64, target_modules=["q_proj", "v_proj"], lora_dropout=0.05, bias="none")
+      config = LoraConfig(r=32, lora_alpha=64, target_modules=["q_proj", "v_proj"], 
+                          lora_dropout=0.05, bias="none")
       model = get_peft_model(model, config)
       model.print_trainable_parameters()
 
 
-
     ### Original preprocessing pipeline (No data augmentation) ###
-    #if (list_degradations is None) and (not args.multiple_eval):
-    if False:
+    """
+    if (list_degradations is None) and (not args.multiple_eval):
       # Preprocess audio: resamples
       dataset = dataset.cast_column("audio", Audio(sampling_rate=16000))
       # Extract features: compute log-magnitude Mel Spectrogram
@@ -275,13 +326,14 @@ def main():
                             num_proc=2)
       # Prep data_collator
       data_collator = DataCollator(processor=processor)
-    
+    """
     ### Preprocessing pipeline with data augmentation ###
-    else:
-      # All audio processing done in the DataCollator
-      data_collator = DataCollatorwithDegradation(processor,
+    #else:
+    # All audio processing done in the DataCollator
+    data_collator = DataCollatorwithDegradation(processor,
                                                   args.dataset,
                                                   list_degradations)
+      
     ### Finetune ###
     if args.train:
       # Perform training and evaluation
@@ -289,64 +341,76 @@ def main():
       # Set Hyperparameters
       training_args = Seq2SeqTrainingArguments(
           output_dir=args.output_dir,
-
+          # Fix seed 
           seed=42,
-          data_seed=None,
+          data_seed=42,
+          # General
           generation_max_length=225,
-
-          max_steps=args.max_steps,
+          # Train hyperparam
+          num_train_epochs=args.num_train_epochs,
           per_device_train_batch_size=args.per_device_train_batch_size,
           gradient_accumulation_steps=args.gradient_accumulation_steps, 
           learning_rate=args.learning_rate, # Initial learning rate
           warmup_steps=args.warmup_steps,
-
-          dataloader_num_workers=0,
-
-          gradient_checkpointing=bool(args.gradient_checkpointing),
           weight_decay=args.weight_decay,
-          fp16=bool(args.fp16),
-
-          per_device_eval_batch_size=args.per_device_eval_batch_size,
-          evaluation_strategy="steps",
-          eval_steps=args.eval_steps,
-
-          predict_with_generate=True,
-          
           logging_steps=args.logging_steps,
-          
-          save_steps=args.eval_steps, # Save checkpoint after save_steps 
-          save_total_limit=2,
-
+          # Computing details         
+          gradient_checkpointing=args.gradient_checkpointing,
+          fp16=bool(args.fp16),
+          # Evaluation
+          per_device_eval_batch_size=args.per_device_eval_batch_size,
+          evaluation_strategy="epoch",
+          predict_with_generate=True,
+          # More
+          remove_unused_columns= False, 
+          label_names=["labels"], # Needed for PEFT
+          # Save model
+          save_strategy= "epoch",
+          save_total_limit = 1,
           load_best_model_at_end=True,
           metric_for_best_model="wer",
           greater_is_better=False,
-          
-          push_to_hub=False,
-          
-          remove_unused_columns= False, 
-          label_names=["labels"] if bool(args.use_peft) else None, # required as the PeftModel forward doesn't have the signature of the wrapped model's forward
       )
 
       # Perform Early stopping
-      early_stop = EarlyStoppingCallback(early_stopping_patience=args.patience,
+      if args.patience != -1:
+        early_stop = EarlyStoppingCallback(early_stopping_patience=args.patience,
                                        early_stopping_threshold=args.early_stopping_threshold)
+        callbacks = [early_stop]
+      else:
+        callbacks = None
       # Set Trainer
-      trainer = Seq2SeqTrainer(
+      trainer = Seq2SeqTrainerwithAugmentation(
           args=training_args,
           model=model,
           train_dataset=dataset["train"],
           eval_dataset=dataset["val"],
           data_collator=data_collator,
           compute_metrics=compute_metrics,
-          callbacks=[early_stop],
+          callbacks=callbacks,
           tokenizer=processor.feature_extractor,
       )
+
+      # Test dataloader
+      if args.test_dataloader:
+        # Save file
+        trainer.data_collator.save = True
+        train_dataloader = trainer.get_train_dataloader()
+        val_dataloader = trainer.get_eval_dataloader(dataset["val"])
+
+        for i in range(5):
+          next(iter(train_dataloader))
+          next(iter(val_dataloader))
+
+        exit()
+
       # Start finetuning
       trainer.train()
+      # Save best model
+      trainer.save_model(args.output_dir)
+      trainer.save_state()
 
-      print("\nHistory")
       log_steps = trainer.state.log_history.copy()
-      print("End History\n")
       
       # No data augmentations for evaluation
       if list_degradations is not None:
@@ -371,8 +435,8 @@ def main():
     else:
       # Set only evaluation related metrics
       training_args = Seq2SeqTrainingArguments(
-          output_dir= args.output_dir,
-          fp16=bool(args.fp16),
+          output_dir=args.output_dir,
+          fp16=args.fp16,
           per_device_eval_batch_size=args.per_device_eval_batch_size,
           predict_with_generate=True,
           generation_max_length=225, 
@@ -452,7 +516,7 @@ def arg_parse() -> argparse.Namespace:
         help="The size of the Whisper Architecture.",
     )
     parser.add_argument(
-        "--finetuned", type=str2bool, default=True, 
+        "--finetuned", type=str2bool, default=False, 
         help="If True, load finetuned weights. Else, load pretrained models."
     )
     parser.add_argument(
@@ -502,11 +566,23 @@ def arg_parse() -> argparse.Namespace:
     )
     # Finetuning
     parser.add_argument(
-        "--per_device_train_batch_size", type=int, help="", default=32
+        "--use_peft", type=str2bool, default=False,
+        help="If True, finetune with LoRA."
+    )
+    parser.add_argument(
+        "--per_device_train_batch_size", type=int, default=32,
+        help="Train batch size.", 
+    )
+    parser.add_argument(
+        "--gradient_accumulation_steps", type=int, default=1,
+        help="Increase by 2x for every 2x decrease in batch size."
     )
     parser.add_argument(
         "--learning_rate", type=float, default=1e-5,
         help="Learning rate to specify for finetuning.",
+    )
+    parser.add_argument(
+        "--num_train_epochs", type=int, help="", default=3
     )
     parser.add_argument(
         "--warmup_steps", type=int, default=500,
@@ -517,10 +593,7 @@ def arg_parse() -> argparse.Namespace:
         help="Weight decay for finetuning.",
     )
     parser.add_argument(
-        "--max_steps", type=int, help="", default=4000
-    )
-    parser.add_argument(
-        "--patience", type=int, default=3,
+        "--patience", type=int, default=-1,
         help="Patience for Early Stopping."
     )
     parser.add_argument(
@@ -528,20 +601,13 @@ def arg_parse() -> argparse.Namespace:
         help="Early sopping threshold.", 
     )
     parser.add_argument(
-        "--gradient_accumulation_steps", type=int, default=1,
-        help="Increase by 2x for every 2x decrease in batch size."
-    )
-    parser.add_argument(
-        "--gradient_checkpointing", type=int, help="", default=1
+        "--gradient_checkpointing", type=str2bool, help="", default=False
     )
     parser.add_argument(
         "--eval_steps", type=int, help="", default=200
     )
     parser.add_argument(
         "--logging_steps", type=int, help="", default=20
-    )
-    parser.add_argument(
-        "--use_peft", type=int, help="", default=0
     )
     # Advanced
     parser.add_argument(
@@ -574,7 +640,11 @@ def arg_parse() -> argparse.Namespace:
               "Else, they will be predicted."),
     )
     parser.add_argument(
-        "--suppress_tokens", type=int, help="", default=0
+        "--suppress_tokens", type=str2bool, help="", default=False
+    )
+    parser.add_argument(
+        "--test_dataloader", type=str2bool, default=False,
+        help="If True, outputs audio from the dataloader to test."
     )
 
     args = parser.parse_args()
