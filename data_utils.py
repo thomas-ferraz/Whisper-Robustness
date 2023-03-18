@@ -66,7 +66,7 @@ def apply_degradation(degradation: List[str], samples,
   if save_file is not None:
     tfm = sox.Transformer()
     tfm.set_output_format(rate=audio.sample_rate, 
-                          bits=64, channels=1)
+                          bits=32, channels=2)
     tfm.build_file(input_array=audio.samples, 
                     sample_rate_in=audio.sample_rate,
                     output_filepath=save_file
@@ -103,7 +103,38 @@ class DataCollator:
         batch["labels"] = labels
 
         return batch
-        
+
+def build_degradation(dict_degradation):
+  """ Build egradation string from dictionary """
+  # Get name
+  name = dict_degradation["name"]
+  deg_str = name
+  # Get param 1
+  if "param1" in dict_degradation.keys():
+    dict_param1 = dict_degradation["param1"]
+    if "values" in dict_param1.keys():
+      values = dict_param1["values"]
+      val_param1 = np.random.choice(values)
+    elif "uniform" in dict_param1.keys():
+      val_min, val_max = dict_param1["uniform"]
+      val_param1 = round(np.random.uniform(low=val_min, high=val_max),3)
+    else:
+      logging.error("Parameter dictionary should contain one of the two keys: values or uniform.")
+    deg_str+=","+str(val_param1)
+  # Get param 2
+  if "param2" in dict_degradation.keys():
+    dict_param2 = dict_degradation["param2"]
+    if "values" in dict_param2.keys():
+      values = dict_param2["values"]
+      val_param2 = np.random.choice(values)
+    elif "uniform" in dict_param2.keys():
+      val_min, val_max = dict_param2["uniform"]
+      val_param2 = round(np.random.uniform(low=val_min, high=val_max),3)
+    else:
+      logging.error("Parameter dictionary should contain one of the two keys: values or uniform.")
+    deg_str+=","+str(val_param2)
+
+  return [deg_str]
 
 @dataclass
 class DataCollatorwithDegradation:
@@ -114,6 +145,7 @@ class DataCollatorwithDegradation:
       self.processor = processor
       self.list_degradations = list_degradations
       self.dataset = dataset
+      self.save = False
     
     def __call__(self, batch) -> Dict[str, torch.Tensor]:
 
@@ -122,33 +154,39 @@ class DataCollatorwithDegradation:
 
         for data in batch:
           samples  = data["audio"]["array"]
-          sample_rate_in = data["audio"]["sampling_rate"]
+          sample_rate = data["audio"]["sampling_rate"]
           samples = prepare_audio(samples)
 
+          if self.save:
+            save_file = os.path.basename(data["audio"]["path"])
+            
+          else:
+            save_file = None
           if self.list_degradations is not None:
             for dict_degradation in self.list_degradations:
-                degradation = dict_degradation["degradation"]
+                # Get probability
                 prob = dict_degradation["prob"]
                 assert 0 <= prob <= 1
                 # For random data augmentation
                 sample = np.random.uniform()
                 if sample > prob:
-                  # Resample
-                  print(f"ouput_{data.id}.wav")
-                  samples, sample_rate = apply_degradation(["resample,16000"], 
-                                                          samples, sample_rate_in)
+                  continue 
+                # Apply degradation with probability = prob
+                if "degradation" in dict_degradation.keys():
+                  # If degradation has fixed parameters
+                  degradation = dict_degradation["degradation"]
                 else:
-                  # Apply degradation with probability = prob
-                  samples, sample_rate = apply_degradation(degradation, samples, 
-                                                    sample_rate_in)
-          else:
-            # Resample
+                  # Build degradations from parameters
+                  degradation = build_degradation(dict_degradation)
+                samples, sample_rate = apply_degradation(degradation, 
+                                                         samples, 
+                                                         sample_rate,
+                                                         save_file=save_file)
+          if sample_rate != 16e3:
             samples, sample_rate = apply_degradation(["resample,16000"], 
-                                                     samples, sample_rate_in)
-
+                                                    samples, sample_rate,
+                                                    save_file=save_file)
           assert sample_rate == 16e3
-          # Test Audio for small batch size
-          #ipd.display(ipd.Audio(samples, rate = sample_rate))
           
           # Compute log-Mel input features from input audio array 
           input_features.append({"input_features": 
