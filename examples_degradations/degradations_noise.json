@@ -1,0 +1,20 @@
+[
+  {
+    "name": "mix",
+    "param1":{
+        "values": ["sounds/white-noise.wav",
+                  "sounds/ambience-pub.wav", 
+                  "sounds/helen.wav",
+                  "sounds/applause.wav",
+                  "sounds/brown-noise.wav",
+                  "sounds/debate1.wav",
+                  "sounds/debate2.wav",
+                  "sounds/hum.wav"],
+        "name": "noise"
+    },
+    "param2":{
+        "values": [100,35,25,15,5,0,-5,-10],
+        "name": "snr"
+    }
+  }
+]
