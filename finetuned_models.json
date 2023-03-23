@@ -1,0 +1,22 @@
+{
+  "French": {
+    "pytorch_model.bin": "113U_Wt0RB9CNOm5zdxM-6lg2lhOHp2Wo",
+    "config.json": "11Q2o6fisltMDkuZ4KdsRkTqwvycPNi6i",
+    "preprocessor_config.json": "11zx3jR4QmTbeBW1K_bupGTOMn2trKFVq",
+    "generation_config.json": "11A1EPSj9Rjjf-Fk1LXtKZVRWyfd-oqJA"
+  },
+  
+  "Galician": {
+    "pytorch_model.bin": "1-1hSbqyHvmseu7VqYHVqZxRFwoWQ6bCQ",
+    "config.json": "1-8Af1qUBwyoPprDMuhCDnHQ6JBMFEA0o",
+    "preprocessor_config.json": "1-QlIlxJgeb3p7PypXBcTQcsFp_jjLh-N",
+    "generation_config.json": "1-6sK1bLrJz-VWfSV9RapNoyEme8gBFE-"
+  },
+
+  "Persian": {
+    "pytorch_model.bin": "10lKdbtnVQ8CQq72f2ujq2mfYFO0ADP1T",
+    "config.json": "1-zXS_2urKW6jrnAHOlsUMGbH-ve0JypN",
+    "preprocessor_config.json": "10iYEJcZresUJOKtLOXccqK5uaWY0uRe4",
+    "generation_config.json": "1-swyioewBuS0Zn-wd7TUzJcFlN3YCeb0"
+  }
+}
