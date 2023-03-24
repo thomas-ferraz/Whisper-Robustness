@@ -304,6 +304,7 @@ def main():
       model = prepare_model_for_int8_training(model, output_embedding_layer_name="proj_out")
 
       config = LoraConfig(r=32, lora_alpha=64, target_modules=["q_proj", "v_proj"], lora_dropout=0.05, bias="none")
+      model.enable_input_require_grads()
       model = get_peft_model(model, config)
       model.print_trainable_parameters()
 
