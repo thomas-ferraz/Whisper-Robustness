@@ -10,3 +10,4 @@ sox==1.4.1
 git+https://github.com/Helene-Maxcici/audio_degrader@a16e233
 loralib==0.1.1
 peft==0.1.0
+gdown==2.3.1
