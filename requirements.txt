@@ -1,12 +1,14 @@
 ffmpeg==1.4
 datasets==2.6.1
-transformers==4.26.0
+transformers==4.27.3
 librosa==0.8.1
 evaluate==0.4.0
 jiwer==2.5.1
 gradio==3.16.2
-torch==1.13.1
+torch==2.0.0
 sox==1.4.1
 git+https://github.com/Helene-Maxcici/audio_degrader@8650ea1
+numpy>=1.22.4
 loralib==0.1.1
-peft==0.1.0
+peft==0.2.0
+gdown==2.3.1
