@@ -33,6 +33,8 @@ from transformers import (WhisperFeatureExtractor, WhisperTokenizer,
                           WhisperProcessor, WhisperForConditionalGeneration)
 from transformers import Seq2SeqTrainer, Seq2SeqTrainingArguments
 from transformers import EarlyStoppingCallback
+from peft import prepare_model_for_int8_training
+from peft import PeftModel, LoraModel, LoraConfig, get_peft_model
 
 import audio_degrader as ad
 
@@ -299,9 +301,8 @@ def main():
 
     ### Use PEFT ###
     if bool(args.use_peft):
-      from peft import prepare_model_for_int8_training
       model = prepare_model_for_int8_training(model, output_embedding_layer_name="proj_out")
-      from peft import LoraConfig, PeftModel, LoraModel, LoraConfig, get_peft_model
+
       config = LoraConfig(r=32, lora_alpha=64, target_modules=["q_proj", "v_proj"], lora_dropout=0.05, bias="none")
       model = get_peft_model(model, config)
       model.print_trainable_parameters()
