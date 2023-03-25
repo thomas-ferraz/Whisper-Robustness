@@ -33,6 +33,8 @@ from transformers import (WhisperFeatureExtractor, WhisperTokenizer,
                           WhisperProcessor, WhisperForConditionalGeneration)
 from transformers import Seq2SeqTrainer, Seq2SeqTrainingArguments
 from transformers import EarlyStoppingCallback
+from peft import prepare_model_for_int8_training
+from peft import PeftModel, LoraModel, LoraConfig, get_peft_model
 
 import audio_degrader as ad
 
@@ -217,6 +219,15 @@ def main():
     dataset["test"] = load_dataset(args.dataset, lang_to_id[args.lang], 
                                    split="test")
 
+    ### CPU Test Mode ####
+    if args.cpu_mode:
+        args.max_steps = 10
+        args.fp16 = 0
+        args.warmup_steps = 1
+        args.eval_steps = 2
+        args.logging_steps = 1
+        args.debug = 1
+
     ### Debug settings ###
     if bool(args.debug):
       print("\nDebug Mode.")
@@ -250,14 +261,6 @@ def main():
       model_name_or_path = "openai/whisper-"+args.size
       architecture = model_name_or_path
       print(f"\nLoaded model: pretrained/{args.size}/{args.lang}\n")
-
-    ### CPU Mode ####
-    if args.cpu_mode:
-        args.max_steps=10
-        args.fp16=0
-        args.warmup_steps=1
-        args.eval_steps=2
-        args.logging_steps=1
 
     ### Load degradations ###
     eval_robustness = bool(args.eval_robustness)
@@ -298,13 +301,12 @@ def main():
 
     ### Use PEFT ###
     if bool(args.use_peft):
-      from peft import prepare_model_for_int8_training
       model = prepare_model_for_int8_training(model, output_embedding_layer_name="proj_out")
-      from peft import LoraConfig, PeftModel, LoraModel, LoraConfig, get_peft_model
+
       config = LoraConfig(r=32, lora_alpha=64, target_modules=["q_proj", "v_proj"], lora_dropout=0.05, bias="none")
+      model.enable_input_require_grads()
       model = get_peft_model(model, config)
       model.print_trainable_parameters()
-
 
 
     ### Original preprocessing pipeline (No data augmentation) ###
