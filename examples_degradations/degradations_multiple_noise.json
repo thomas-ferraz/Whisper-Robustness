@@ -5,11 +5,8 @@
         "values": ["sounds/white-noise.wav",
                   "sounds/ambience-pub.wav", 
                   "sounds/helen.wav",
-                  "sounds/applause.wav",
                   "sounds/brown-noise.wav",
-                  "sounds/debate1.wav",
-                  "sounds/debate2.wav",
-                  "sounds/hum.wav"],
+                  "sounds/debate1.wav"],
         "name": "noise"
     },
     "param2":{
