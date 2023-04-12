@@ -408,10 +408,9 @@ def main():
       trainer.train()
       # Save best model
       trainer.save_model(args.output_dir)
-      trainer.save_state()
-
-      log_steps = trainer.state.log_history.copy()
       
+      dict_logs = dataclasses.asdict(trainer.state)
+
       # No data augmentations for evaluation
       if list_degradations is not None:
         data_collator.list_degradations = None
@@ -421,11 +420,11 @@ def main():
       print("\n***** Evaluation Results *****")
       print(pd.Series(test_metrics))
 
-      log_steps.append(test_metrics)
+      dict_logs["log_history"].append(test_metrics)
 
       # Save training log
       with open(os.path.join(args.output_dir,'training_logg.json'), 'w') as file:
-          file.write(json.dumps(log_steps, indent=4))
+          file.write(json.dumps(dict_logs, indent=4))
           print(f"\nLogging history saved at: {os.path.join(args.output_dir,'training_logg.json')}")
 
       # Save finetuned weights in output_dir
