@@ -18,6 +18,7 @@ import json
 import gdown
 import logging
 
+import dataclasses
 from dataclasses import dataclass
 from typing import Any, Dict, List, Union, Optional
 from functools import partial
