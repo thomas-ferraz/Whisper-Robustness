@@ -57,11 +57,9 @@ def main(args):
 
     # load model and processor
     # TODO: eliminate pred_processor when reading transcripts
-    pred_processor = WhisperProcessor.from_pretrained("openai/whisper-tiny.en")
     processor = WhisperProcessor.from_pretrained(args.model_name)
     processor.feature_extractor = WhisperAttackerFeatureExtractor()
-    model = WhisperForConditionalGeneration.from_pretrained(
-        "openai/whisper-tiny.en")
+    model = WhisperForConditionalGeneration.from_pretrained(args.model_name)
     model.to(device)
 
     def data_collator_attacker(dataset):
