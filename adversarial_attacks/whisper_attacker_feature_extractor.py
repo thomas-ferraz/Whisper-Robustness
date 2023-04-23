@@ -217,15 +217,10 @@ class WhisperAttackerFeatureExtractor(WhisperFeatureExtractor):
         #stft = self.stft(frames, window=window)
         #stft = torch.stft(frames, n_fft=self.n_fft) #hop_length=None
         stft = torch.stft(waveform, n_fft=self.n_fft, hop_length=self.hop_length, window=window, center=True, pad_mode='reflect',return_complex=True)
-        print("stft dimension")
-        print(stft.shape)
         magnitudes = torch.abs(stft[:, :-1]) ** 2
 
         filters = self.mel_filters
-        print(filters.shape)
-        print(magnitudes.shape)
         mel_spec = filters.T @ magnitudes
-        print(mel_spec)
 
         log_spec = torch.log10(torch.clip(mel_spec, min=1e-10, max=None))
         log_spec = torch.maximum(log_spec, log_spec.max() - 8.0)
@@ -338,8 +333,7 @@ class WhisperAttackerFeatureExtractor(WhisperFeatureExtractor):
 
         #if return_tensors is not None:
             #padded_inputs = padded_inputs.convert_to_tensors(return_tensors)
-        print("speech format")
-        print(raw_speech.shape)
+
         input_features = self._extract_fbank_features(raw_speech)
 
         return BatchFeature({"input_features": input_features})
