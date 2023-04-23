@@ -71,11 +71,8 @@ def main(args):
             samples_rate_in = data["audio"]["sampling_rate"]
 
             # creating labels
-            # TODO: modify to use the labels
-            pred_features = pred_processor(
-                samples, sampling_rate=samples_rate_in,
-                return_tensors="pt").input_features.to(device)
-            predicted_ids = model.generate(pred_features)
+            # TODO: fix column mapping
+            labels_ids = processor.tokenizer(data["text"])["input_ids"]
 
             # adversarial attack
             # TODO: should we put this into a function?
@@ -89,10 +86,10 @@ def main(args):
                                    value=0.0)
 
             out = model.forward(input_features=input_features,
-                                labels=predicted_ids)
+                                labels=labels_ids)
             loss = F.cross_entropy(
                 out.logits.view(-1, model.config.vocab_size),
-                predicted_ids.view(-1))
+                labels_ids.view(-1))
 
             model.zero_grad()
             loss.backward()
