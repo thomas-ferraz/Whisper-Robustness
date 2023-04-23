@@ -217,12 +217,12 @@ class DataCollatorwithDegradation:
 class DataCollatorAttacker:
 
     def __init__(self, processor: Any, dataset: Any):
+        #TODO: see if this can be used
         processor.feature_extractor = WhisperAttackerFeatureExtractor()
         self.processor = processor
-        self.dataset = dataset
 
     def __call__(self, batch):
-
+        input_features = []
         for data in batch:
             samples = torch.from_numpy(data["audio"]["array"]).float()
             samples_rate_in = data["audio"]["sampling_rate"]
@@ -239,12 +239,11 @@ class DataCollatorAttacker:
                 mode="constant",
                 value=0.0)
 
-            data = {
-                "input_features": sample_features,
-                "audio": samples,
-                "label": None,
-            }
-        return batch
+            sample["input_features"].append(sample_features)
+            sample["audio"].append(samples)
+        sample["input_features"] = torch.tensor(sample["input_features"])
+        sample["audio"] = torch.tensor(sample["audio"])
+        return sample
 
 
 def evaluate_robustness(trainer,

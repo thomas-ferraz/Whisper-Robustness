@@ -1,13 +1,13 @@
 import argparse
 
-from datasets import load_dataset
+from datasets import load_dataset, Dataset
 import torch
 import torch.nn.functional as F
 from torch.utils.data import DataLoader
 from transformers import WhisperProcessor, WhisperForConditionalGeneration
 
 from adversarial_attacks.whisper_attacker_feature_extractor import WhisperAttackerFeatureExtractor
-from data_utils import DataCollatorAttacker
+#from data_utils import DataCollatorAttacker
 
 
 def arg_parse() -> argparse.Namespace:
@@ -34,7 +34,7 @@ def arg_parse() -> argparse.Namespace:
         default=1,
     )
     parser.add_argument(
-        "--model",
+        "--model_name",
         type=str,
         help="Model name",
         default="openai/whisper-tiny.en",
@@ -49,50 +49,64 @@ def arg_parse() -> argparse.Namespace:
     return args
 
 
-def adversarial_attack(
-    model,
-    batch,
-    attack_iterations,
-    epsilon: int = 0.2,
-):
-    # TODO: test this process
-    # TODO: modify the devices
-    batch["audio"].requires_grad = True
-    predicted_ids = model.generate(batch["input_features"])
-    for _ in attack_iterations:
-        out = model.forward(input_features=batch["input_features"],
-                            labels=predicted_ids)
-        loss = F.cross_entropy(out.logits.view(-1, model.config.vocab_size),
-                               predicted_ids.view(-1))
-        # TODO: WHAT IS PREDICTED_IDS
-        model.zero_grad()
-        loss.backward()
-        audio_grad = batch["audio"].grad.data
-        sign_data_grad = audio_grad.sign()
-        perturbed_sound = batch["audio"] - epsilon * sign_data_grad
-    return perturbed_sound
-
-
 def main(args):
-    # Create dataset
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+    # load dataset
     dataset = load_dataset(args.dataset, "clean", split="validation")
 
-    # Feature Extractor
+    # load model and processor
+    # TODO: eliminate pred_processor when reading transcripts
+    pred_processor = WhisperProcessor.from_pretrained("openai/whisper-tiny.en")
     processor = WhisperProcessor.from_pretrained(args.model_name)
+    processor.feature_extractor = WhisperAttackerFeatureExtractor()
+    model = WhisperForConditionalGeneration.from_pretrained(
+        "openai/whisper-tiny.en")
+    model.to(device)
 
-    datacollator = DataCollatorAttacker(processor=processor, dataset=dataset)
-    loader = DataLoader(dataset,
-                        batch_size=args.batch_size,
-                        collate_fn=datacollator)
+    def data_collator_attacker(dataset):
+        # TODO: testing as a datacollator object
+        for data in dataset:
+            samples = torch.from_numpy(data["audio"]["array"]).float()
+            samples_rate_in = data["audio"]["sampling_rate"]
 
-    # Initialize the Model
-    model = WhisperForConditionalGeneration.from_pretrained(args.model_name)
+            # creating labels
+            # TODO: modify to use the labels
+            pred_features = pred_processor(
+                samples, sampling_rate=samples_rate_in,
+                return_tensors="pt").input_features.to(device)
+            predicted_ids = model.generate(pred_features)
 
-    # Perform attack
-    for batch in loader:
-        perturbed_sound = adversarial_attack(model, batch,
-                                             args.attack_iterations,
-                                             args.epsilon)
+            # adversarial attack
+            # TODO: should we put this into a function?
+            samples.requires_grad = True
+            input_features = processor(
+                samples, sampling_rate=samples_rate_in,
+                return_tensors="pt").input_features.to(device)
+            input_features = F.pad(input=input_features[None],
+                                   pad=(0, 3000 - input_features.shape[1]),
+                                   mode="constant",
+                                   value=0.0)
+
+            out = model.forward(input_features=input_features,
+                                labels=predicted_ids)
+            loss = F.cross_entropy(
+                out.logits.view(-1, model.config.vocab_size),
+                predicted_ids.view(-1))
+
+            model.zero_grad()
+            loss.backward()
+            data_grad = samples.grad.data
+            epsilon = 0.02
+            sign_data_grad = data_grad.sign()
+            perturbed_sound = samples - epsilon * sign_data_grad
+            yield {
+                "input_features": input_features,
+                "audio": perturbed_sound.cpu()
+            }
+
+    dataset_adversarial = Dataset.from_generator(
+        generator=lambda: data_collator_attacker(dataset))
 
 
 if __name__ == "__main__":
