@@ -95,10 +95,13 @@ def main(args):
     model = WhisperForConditionalGeneration.from_pretrained(args.model_name)
     model.to(device)
 
-    datacollator = DataCollatorAttacker(processor, model, device)
+    data_collator_attacker = DataCollatorAttacker(processor=processor,
+                                                  model=model,
+                                                  epsilon=0.02,
+                                                  device=device)
 
     dataset_adversarial = Dataset.from_generator(
-        generator=lambda: datacollator(dataset))
+        generator=lambda: data_collator_attacker(dataset))
 
     # Prepare dataset
 

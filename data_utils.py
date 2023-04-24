@@ -216,13 +216,22 @@ class DataCollatorwithDegradation:
 @dataclass
 class DataCollatorAttacker:
 
-    def __init__(self, processor, model, device: str):
+    def __init__(self,
+                 processor,
+                 model,
+                 epsilon: float = None,
+                 snr: int = None,
+                 device: str = 'cpu'):
         self.processor = processor
         self.model = model
+        self.epsilon = epsilon
+        self.snr = snr
         self.device = device
 
     def compute_epsilon(self, sample, grads):
-        pass
+        log_epsilon = torch.log(
+            torch.norm(sample) / torch.norm(grads)) - (self.snr / 20)
+        return torch.exp(log_epsilon)
 
     def __call__(self, dataset):
         for data in dataset:
@@ -246,7 +255,7 @@ class DataCollatorAttacker:
                                    mode="constant",
                                    value=0.0)
             out = self.model.forward(input_features=input_features,
-                                labels=labels_ids)
+                                     labels=labels_ids)
             loss = F.cross_entropy(
                 out.logits.view(-1, self.model.config.vocab_size),
                 labels_ids.view(-1))
@@ -254,14 +263,18 @@ class DataCollatorAttacker:
             self.model.zero_grad()
             loss.backward()
             data_grad = samples.grad.data
-            epsilon = 0.02
             sign_data_grad = data_grad.sign()
-            perturbed_sound = samples - epsilon * sign_data_grad
+            if self.epsilon is None:
+                self.epsilon = self.compute_epsilon(samples, sign_data_grad)
+            perturbed_sound = samples - self.epsilon * sign_data_grad
             yield {
-                "audio": {"array": perturbed_sound.cpu(),
-                          "sampling_rate":samples_rate_in},
+                "audio": {
+                    "array": perturbed_sound.cpu(),
+                    "sampling_rate": samples_rate_in
+                },
                 "text": data["text"],
             }
+
 
 def evaluate_robustness(trainer,
                         data_collator,
