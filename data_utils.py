@@ -216,35 +216,52 @@ class DataCollatorwithDegradation:
 @dataclass
 class DataCollatorAttacker:
 
-    def __init__(self, processor: Any, dataset: Any):
-        #TODO: see if this can be used
-        processor.feature_extractor = WhisperAttackerFeatureExtractor()
+    def __init__(self, processor, model, device: str):
         self.processor = processor
+        self.model = model
+        self.device = device
 
-    def __call__(self, batch):
-        input_features = []
-        for data in batch:
+    def compute_epsilon(self, sample, grads):
+        pass
+
+    def __call__(self, dataset):
+        for data in dataset:
             samples = torch.from_numpy(data["audio"]["array"]).float()
             samples_rate_in = data["audio"]["sampling_rate"]
-            # TODO: add the labels
-            # TODO: should we do the normalization here?
-            # samples = prepare_audio(samples)
-            sample_features = self.processor(
+
+            # creating labels
+            # TODO: fix column mapping
+            labels_ids = self.processor.tokenizer(data["text"])["input_ids"]
+
+            samples.requires_grad = True
+
+            # adversarial attack
+            # TODO: should we put this into a function?
+            samples.requires_grad = True
+            input_features = self.processor(
                 samples, sampling_rate=samples_rate_in,
-                return_tensors="pt").input_features
-            sample_features = F.pad(
-                input=sample_features[None],
-                # TODO: change to parameters
-                pad=(0, 3000 - 585),
-                mode="constant",
-                value=0.0)
+                return_tensors="pt").input_features.to(self.device)
+            input_features = F.pad(input=input_features[None],
+                                   pad=(0, 3000 - input_features.shape[1]),
+                                   mode="constant",
+                                   value=0.0)
+            out = self.model.forward(input_features=input_features,
+                                labels=labels_ids)
+            loss = F.cross_entropy(
+                out.logits.view(-1, self.model.config.vocab_size),
+                labels_ids.view(-1))
 
-            sample["input_features"].append(sample_features)
-            sample["audio"].append(samples)
-        sample["input_features"] = torch.tensor(sample["input_features"])
-        sample["audio"] = torch.tensor(sample["audio"])
-        return sample
-
+            self.model.zero_grad()
+            loss.backward()
+            data_grad = samples.grad.data
+            epsilon = 0.02
+            sign_data_grad = data_grad.sign()
+            perturbed_sound = samples - epsilon * sign_data_grad
+            yield {
+                "audio": {"array": perturbed_sound.cpu(),
+                          "sampling_rate":samples_rate_in},
+                "text": data["text"],
+            }
 
 def evaluate_robustness(trainer,
                         data_collator,
