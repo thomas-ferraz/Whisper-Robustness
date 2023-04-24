@@ -69,7 +69,7 @@ lang_to_id = {"gl":"gl_es",
               "fr":"fr_fr", 
               "fa":"fa_ir", 
               "en": "en_us",
-              "es": "es_419"
+              "es": "es_419",
               "libri_en":"clean"}
 
 def load_finetuned(size="tiny", language="French"):
