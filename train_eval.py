@@ -63,11 +63,13 @@ def str2bool(v):
 lang_to_whisper = {"gl":"Galician", 
                    "fr":"French", 
                    "fa":"Persian", 
-                   "en": "English"}
+                   "en": "English",
+                  "es", "Spanish"}
 lang_to_id = {"gl":"gl_es", 
               "fr":"fr_fr", 
               "fa":"fa_ir", 
-              "en": "en_us", 
+              "en": "en_us",
+              "es": "es_419"
               "libri_en":"clean"}
 
 def load_finetuned(size="tiny", language="French"):
