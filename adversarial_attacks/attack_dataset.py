@@ -89,7 +89,6 @@ def main(args):
     dataset = load_dataset(args.dataset, "clean", split="validation")
 
     # load model and processor
-    # TODO: eliminate pred_processor when reading transcripts
     processor = WhisperProcessor.from_pretrained(args.model_name)
     processor.feature_extractor = WhisperAttackerFeatureExtractor()
     model = WhisperForConditionalGeneration.from_pretrained(args.model_name)

@@ -240,7 +240,8 @@ class DataCollatorAttacker:
 
             # creating labels
             # TODO: fix column mapping
-            labels_ids = self.processor.tokenizer(data["text"])["input_ids"]
+            labels_ids = torch.tensor(
+                self.processor.tokenizer(data["text"])["input_ids"])[None]
 
             samples.requires_grad = True
 
