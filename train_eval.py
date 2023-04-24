@@ -64,7 +64,7 @@ lang_to_whisper = {"gl":"Galician",
                    "fr":"French", 
                    "fa":"Persian", 
                    "en": "English",
-                  "es", "Spanish"}
+                  "es": "Spanish"}
 lang_to_id = {"gl":"gl_es", 
               "fr":"fr_fr", 
               "fa":"fa_ir", 
