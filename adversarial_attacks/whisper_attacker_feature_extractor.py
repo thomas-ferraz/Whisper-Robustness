@@ -8,23 +8,21 @@
 # Include Notice
 # If the library has a "NOTICE" file with attribution notes, you must include that NOTICE when you distribute. You may append to this NOTICE file.
 
-
-
 from typing import List, Optional, Union
 
-import numpy as np #TODO: remove
-from numpy.fft import fft #TODO: remove
+import numpy as np  #TODO: remove
+from numpy.fft import fft  #TODO: remove
 import torch
 
 from transformers import WhisperFeatureExtractor
 from transformers import TensorType, logging
 from transformers import BatchFeature
 
-
 logger = logging.get_logger(__name__)
 
 # TODO: comment better
 # TODO: Remove commented code
+
 
 class WhisperAttackerFeatureExtractor(WhisperFeatureExtractor):
     r"""
@@ -63,8 +61,7 @@ class WhisperAttackerFeatureExtractor(WhisperFeatureExtractor):
         n_fft=400,
         padding_value=0.0,
         return_attention_mask=False,  # pad inputs to max length with silence token (zero) and no attention mask
-        **kwargs
-    ):
+        **kwargs):
         super().__init__(
             feature_size=feature_size,
             sampling_rate=sampling_rate,
@@ -78,7 +75,9 @@ class WhisperAttackerFeatureExtractor(WhisperFeatureExtractor):
         self.n_samples = chunk_length * sampling_rate
         self.nb_max_frames = self.n_samples // hop_length
         self.sampling_rate = sampling_rate
-        self.mel_filters = self.get_mel_filters(sampling_rate, n_fft, n_mels=feature_size)
+        self.mel_filters = self.get_mel_filters(sampling_rate,
+                                                n_fft,
+                                                n_mels=feature_size)
         #self.mel_filters = torchaudio.functional.melscale_fbanks(n_freqs=n_fft, f_min=0.0, f_max=28.674781849729335, n_mels=feature_size, sample_rate=sampling_rate, norm="slaney", mel_scale='htk')
 
     def get_mel_filters(self, sr, n_fft, n_mels=128, dtype=torch.float32):
@@ -109,7 +108,8 @@ class WhisperAttackerFeatureExtractor(WhisperFeatureExtractor):
 
         # If we have vector data, vectorize
         log_t = mels >= min_log_mel
-        freqs[log_t] = min_log_hz * torch.exp(logstep * (mels[log_t] - min_log_mel))
+        freqs[log_t] = min_log_hz * torch.exp(logstep *
+                                              (mels[log_t] - min_log_mel))
 
         mel_f = freqs
 
@@ -121,27 +121,30 @@ class WhisperAttackerFeatureExtractor(WhisperFeatureExtractor):
         #    lower = -ramps[i] / fdiff[i]
         #    upper = ramps[i + 2] / fdiff[i + 1]
 
-            # .. then intersect them with each other and zero
+        # .. then intersect them with each other and zero
         #    weights[i] = np.maximum(0, np.minimum(lower, upper))
 
         # create filterbank - based on pytorchaudio's _create_triangular_filterbank
         # calculate the difference between each filter mid point and each stft freq point in hertz
         f_diff = mel_f[1:] - mel_f[:-1]  # (n_filter + 1)
-        slopes = mel_f.unsqueeze(0) - fftfreqs.unsqueeze(1)  # (n_freqs, n_filter + 2)
+        slopes = mel_f.unsqueeze(0) - fftfreqs.unsqueeze(
+            1)  # (n_freqs, n_filter + 2)
         # create overlapping triangles
         zero = torch.zeros(1)
-        down_slopes = (-1.0 * slopes[:, :-2]) / f_diff[:-1]  # (n_freqs, n_filter)
+        down_slopes = (-1.0 *
+                       slopes[:, :-2]) / f_diff[:-1]  # (n_freqs, n_filter)
         up_slopes = slopes[:, 2:] / f_diff[1:]  # (n_freqs, n_filter)
-        weights = torch.max(zero, torch.min(down_slopes, up_slopes)) #fb ->weights
+        weights = torch.max(zero, torch.min(down_slopes,
+                                            up_slopes))  #fb ->weights
 
         # Slaney-style mel is scaled to be approx constant energy per channel
-        enorm = 2.0 / (mel_f[2 : n_mels + 2] - mel_f[:n_mels])
+        enorm = 2.0 / (mel_f[2:n_mels + 2] - mel_f[:n_mels])
         #weights *= enorm[:, np.newaxis]
         weights *= enorm.unsqueeze(0)
 
         return weights
 
-    def fram_wave(self, waveform, center=True): #TODO: remove
+    def fram_wave(self, waveform, center=True):  #TODO: remove
         """
         Transform a raw waveform into a list of smaller waveforms. The window length defines how much of the signal is
         contain in each frame (smalle waveform), while the hope length defines the step between the beginning of each
@@ -154,7 +157,8 @@ class WhisperAttackerFeatureExtractor(WhisperFeatureExtractor):
             half_window = (self.n_fft - 1) // 2 + 1
             if center:
                 start = i - half_window if i > half_window else 0
-                end = i + half_window if i < waveform.shape[0] - half_window else waveform.shape[0]
+                end = i + half_window if i < waveform.shape[
+                    0] - half_window else waveform.shape[0]
 
                 frame = waveform[start:end]
 
@@ -167,17 +171,18 @@ class WhisperAttackerFeatureExtractor(WhisperFeatureExtractor):
                     frame = np.pad(frame, pad_width=padd_width, mode="reflect")
 
             else:
-                frame = waveform[i : i + self.n_fft]
+                frame = waveform[i:i + self.n_fft]
                 frame_width = frame.shape[0]
                 if frame_width < waveform.shape[0]:
-                    frame = np.lib.pad(
-                        frame, pad_width=(0, self.n_fft - frame_width), mode="constant", constant_values=0
-                    )
+                    frame = np.lib.pad(frame,
+                                       pad_width=(0, self.n_fft - frame_width),
+                                       mode="constant",
+                                       constant_values=0)
 
             frames.append(frame)
         return np.stack(frames, 0)
 
-    def stft(self, frames, window): #TODO: remove
+    def stft(self, frames, window):  #TODO: remove
         """
         Calculates the complex Short-Time Fourier Transform (STFT) of the given framed signal. Should give the same
         results as `torch.stft`.
@@ -216,16 +221,22 @@ class WhisperAttackerFeatureExtractor(WhisperFeatureExtractor):
         #frames = self.fram_wave(waveform)
         #stft = self.stft(frames, window=window)
         #stft = torch.stft(frames, n_fft=self.n_fft) #hop_length=None
-        stft = torch.stft(waveform, n_fft=self.n_fft, hop_length=self.hop_length, window=window, center=True, pad_mode='reflect',return_complex=True)
-        print("stft dimension")
-        print(stft.shape)
-        magnitudes = torch.abs(stft[:, :-1]) ** 2
+        stft = torch.stft(waveform,
+                          n_fft=self.n_fft,
+                          hop_length=self.hop_length,
+                          window=window,
+                          center=True,
+                          pad_mode='reflect',
+                          return_complex=True)
+        #print("stft dimension")
+        #print(stft.shape)
+        magnitudes = torch.abs(stft[:, :-1])**2
 
         filters = self.mel_filters
-        print(filters.shape)
-        print(magnitudes.shape)
+        #print(filters.shape)
+        #print(magnitudes.shape)
         mel_spec = filters.T @ magnitudes
-        print(mel_spec)
+        #print(mel_spec)
 
         log_spec = torch.log10(torch.clip(mel_spec, min=1e-10, max=None))
         log_spec = torch.maximum(log_spec, log_spec.max() - 8.0)
@@ -234,17 +245,17 @@ class WhisperAttackerFeatureExtractor(WhisperFeatureExtractor):
         return log_spec
 
     def __call__(
-        self,
-        raw_speech: torch.Tensor, #Union[np.ndarray, List[float], List[np.ndarray], List[List[float]]],
-        truncation: bool = True,
-        pad_to_multiple_of: Optional[int] = None,
-        return_tensors: Optional[Union[str, TensorType]] = None,
-        return_attention_mask: Optional[bool] = None,
-        padding: Optional[str] = "max_length",
-        max_length: Optional[int] = None,
-        sampling_rate: Optional[int] = None,
-        **kwargs
-    ) -> torch.Tensor:
+            self,
+            raw_speech: torch.
+        Tensor,  #Union[np.ndarray, List[float], List[np.ndarray], List[List[float]]],
+            truncation: bool = True,
+            pad_to_multiple_of: Optional[int] = None,
+            return_tensors: Optional[Union[str, TensorType]] = None,
+            return_attention_mask: Optional[bool] = None,
+            padding: Optional[str] = "max_length",
+            max_length: Optional[int] = None,
+            sampling_rate: Optional[int] = None,
+            **kwargs) -> torch.Tensor:
         """
         Main method to featurize and prepare for the model one or several sequence(s).
 
@@ -332,14 +343,14 @@ class WhisperAttackerFeatureExtractor(WhisperFeatureExtractor):
         #input_features = [self._np_extract_fbank_features(waveform) for waveform in input_features[0]]
 
         #if isinstance(input_features[0], List):
-         #   padded_inputs["input_features"] = [np.asarray(feature, dtype=np.float32) for feature in input_features]
+        #   padded_inputs["input_features"] = [np.asarray(feature, dtype=np.float32) for feature in input_features]
         #else:
-         #   padded_inputs["input_features"] = input_features
+        #   padded_inputs["input_features"] = input_features
 
         #if return_tensors is not None:
-            #padded_inputs = padded_inputs.convert_to_tensors(return_tensors)
-        print("speech format")
-        print(raw_speech.shape)
+        #padded_inputs = padded_inputs.convert_to_tensors(return_tensors)
+        #print("speech format")
+        #print(raw_speech.shape)
         input_features = self._extract_fbank_features(raw_speech)
 
         return BatchFeature({"input_features": input_features})

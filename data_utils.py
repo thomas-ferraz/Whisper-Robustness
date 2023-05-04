@@ -241,7 +241,8 @@ class DataCollatorAttacker:
             # creating labels
             # TODO: fix column mapping
             labels_ids = torch.tensor(
-                self.processor.tokenizer(data["text"])["input_ids"])[None]
+                self.processor.tokenizer(data["text"])["input_ids"])[None].to(
+                    self.device)
 
             samples.requires_grad = True
 
@@ -265,7 +266,7 @@ class DataCollatorAttacker:
             loss.backward()
             data_grad = samples.grad.data
             sign_data_grad = data_grad.sign()
-            if self.epsilon is None:
+            if self.snr is not None:
                 self.epsilon = self.compute_epsilon(samples, sign_data_grad)
             perturbed_sound = samples - self.epsilon * sign_data_grad
             yield {

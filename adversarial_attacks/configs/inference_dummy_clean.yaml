@@ -1,0 +1,10 @@
+model:
+  name: openai/whisper-tiny.en
+  language: en
+data:
+  name: hf-internal-testing/librispeech_asr_dummy
+  version: clean
+  tag: clean
+  path: None
+batch_size: 10
+device: cuda
