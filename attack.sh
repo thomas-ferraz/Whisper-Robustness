@@ -1,2 +1,3 @@
 export PYTHONPATH=$(pwd)
-python adversarial_attacks/attack_dataset.py
+python adversarial_attacks/attack_dataset.py \
+    --snr=35

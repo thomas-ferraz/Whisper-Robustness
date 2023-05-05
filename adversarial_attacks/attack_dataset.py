@@ -49,10 +49,6 @@ def arg_parse() -> argparse.Namespace:
                         help="",
                         default=8)
     parser.add_argument("--snr", type=int, help="Fixed SNR", default=35)
-    parser.add_argument("--save_to_path",
-                        type=str,
-                        help="path to save the attacked dataset",
-                        default="attacked.hf")
     args = parser.parse_args()
     return args
 

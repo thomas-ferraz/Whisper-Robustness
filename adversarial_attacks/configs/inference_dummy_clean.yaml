@@ -5,6 +5,6 @@ data:
   name: hf-internal-testing/librispeech_asr_dummy
   version: clean
   tag: clean
-  path: None
+  path: ""
 batch_size: 10
 device: cuda
