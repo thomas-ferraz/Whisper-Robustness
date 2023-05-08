@@ -1,0 +1,10 @@
+lang: dummy_en
+model: openai/whisper-tiny.en 
+data:
+  name: hf-internal-testing/librispeech_asr_dummy
+  path: ""
+attack:
+  iterations: ""
+  epsilon: ""
+  snr: 35
+device: cuda

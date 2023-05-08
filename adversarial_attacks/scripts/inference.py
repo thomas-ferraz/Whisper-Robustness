@@ -8,6 +8,8 @@ from evaluate import load
 from datasets import load_dataset, load_from_disk
 from transformers import WhisperProcessor, WhisperForConditionalGeneration
 
+from adversarial_attacks.utils import LANGUAGE
+
 
 def map_to_pred(batch, processor, model, device):
     audio_arrays = [audio["array"] for audio in batch["audio"]]
@@ -26,16 +28,19 @@ def map_to_pred(batch, processor, model, device):
 
 def main(conf):
     device = conf.device
+    lang = LANGUAGE[conf.lang]
     if conf.data.path:
         dataset = load_from_disk(conf.data.path)
     else:
         dataset = load_dataset(conf.data.name,
-                               conf.data.version,
+                               lang["data"],
                                split="validation")
 
-    processor = WhisperProcessor.from_pretrained(conf.model.name)
+    processor = WhisperProcessor.from_pretrained(conf.model)
+    if lang["model"]:
+        processor.get_decoder_prompt_ids(lang["model"], task="transcribe")
     model = WhisperForConditionalGeneration.from_pretrained(
-        conf.model.name).to(device)
+        conf.model).to(device)
 
     map_to_pred_func = partial(map_to_pred,
                                processor=processor,
@@ -54,7 +59,7 @@ def main(conf):
                               references=result["text"])
     print(f"WER Value: {wer_dataset}")
 
-    save_dir = f"{conf.data.version}_{conf.data.tag}_results.hf"
+    save_dir = f"{conf.lang}_{conf.attack}_results.hf"
     print(f"Saving dataset results at {save_dir}")
     result.save_to_disk(save_dir)
 

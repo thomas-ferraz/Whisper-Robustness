@@ -1,4 +1,5 @@
 import argparse
+from omegaconf import OmegaConf
 
 from datasets import load_dataset, Dataset
 import torch
@@ -6,6 +7,7 @@ from transformers import WhisperProcessor, WhisperForConditionalGeneration
 
 from adversarial_attacks.whisper_attacker_feature_extractor import WhisperAttackerFeatureExtractor
 from data_utils import DataCollatorAttacker
+from adversarial_attacks.utils import LANGUAGE
 
 
 def arg_parse() -> argparse.Namespace:
@@ -18,12 +20,6 @@ def arg_parse() -> argparse.Namespace:
         type=str,
         help="Dataset name",
         default="hf-internal-testing/librispeech_asr_dummy",
-    )
-    parser.add_argument(
-        "--batch_size",
-        type=int,
-        help="Batch Sizer",
-        default=4,
     )
     parser.add_argument(
         "--attack_iterations",
@@ -44,10 +40,6 @@ def arg_parse() -> argparse.Namespace:
         default=0.2,
     )
     parser.add_argument("--output_dir", type=str, help="", default="./model")
-    parser.add_argument("--per_device_eval_batch_size",
-                        type=int,
-                        help="",
-                        default=8)
     parser.add_argument("--snr", type=int, help="Fixed SNR", default=35)
     args = parser.parse_args()
     return args
@@ -76,30 +68,38 @@ def compute_metrics(pred, tokenizer, metric_wer, normalize="whisper"):
     return wer
 
 
-def main(args):
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
+def main(conf):
+    device = conf.device
+    lang = LANGUAGE[conf.lang]
     # load dataset
-    dataset = load_dataset(args.dataset, "clean", split="validation")
+    dataset = load_dataset(conf.data.name, lang["data"], split="validation")
 
     # load model and processor
-    processor = WhisperProcessor.from_pretrained(args.model_name)
+    processor = WhisperProcessor.from_pretrained(conf.model)
     processor.feature_extractor = WhisperAttackerFeatureExtractor()
-    model = WhisperForConditionalGeneration.from_pretrained(args.model_name)
+    if lang["model"]:
+        processor.get_decoder_prompt_ids(lang["model"], task="transcribe")
+    model = WhisperForConditionalGeneration.from_pretrained(conf.model)
     model.to(device)
 
     data_collator_attacker = DataCollatorAttacker(processor=processor,
                                                   model=model,
-                                                  snr=args.snr,
+                                                  epsilon=conf.attack.epsilon,
+                                                  snr=conf.attack.snr,
                                                   device=device)
 
     adversarial_dataset = Dataset.from_generator(
         generator=lambda: data_collator_attacker(dataset))
 
-    save_to_dir = f"attaked_{args.snr}.hf"
+    save_to_dir = f"attaked_{conf.lang}_{conf.attack.snr}.hf"
     adversarial_dataset.save_to_disk(save_to_dir)
 
 
 if __name__ == "__main__":
-    args = arg_parse()
-    main(args)
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--config_path", help="path to configuration file")
+    args = parser.parse_args()
+
+    conf = OmegaConf.load(args.config_path)
+    main(conf)
