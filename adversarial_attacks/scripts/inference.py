@@ -11,12 +11,22 @@ from transformers import WhisperProcessor, WhisperForConditionalGeneration
 from adversarial_attacks.utils import LANGUAGE
 
 
-def map_to_pred(batch, processor, model, device, labels):
+def map_to_pred(batch,
+                processor,
+                model,
+                device,
+                labels,
+                forced_decoder_ids=None):
     audio_arrays = [audio["array"] for audio in batch["audio"]]
     input_features = processor(audio_arrays,
                                sampling_rate=16000,
                                return_tensors="pt").input_features
-    predicted_ids = model.generate(input_features.to(device))
+    if forced_decoder_ids:
+        predicted_ids = model.generate(
+            input_features.to(device),
+            forced_decoder_ids=forced_decoder_ids.to(device))
+    else:
+        predicted_ids = model.generate(input_features.to(device))
     transcription = processor.batch_decode(predicted_ids, normalize=True)
     labels = [processor.tokenizer._normalize(text) for text in batch[labels]]
     batch['text'] = labels
@@ -36,7 +46,8 @@ def main(conf):
 
     processor = WhisperProcessor.from_pretrained(conf.model)
     if lang["model"]:
-        processor.get_decoder_prompt_ids(lang["model"], task="transcribe")
+        forced_decoder_ids = processor.get_decoder_prompt_ids(
+            language=lang["model"], task="transcribe")
     model = WhisperForConditionalGeneration.from_pretrained(
         conf.model).to(device)
 
@@ -44,7 +55,8 @@ def main(conf):
                                processor=processor,
                                model=model,
                                device=device,
-                               labels=conf.data.labels)
+                               labels=conf.data.labels,
+                               forced_decoder_ids=forced_decoder_ids)
 
     result = dataset.map(map_to_pred_func,
                          batched=True,
