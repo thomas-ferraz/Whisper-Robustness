@@ -11,16 +11,14 @@ from transformers import WhisperProcessor, WhisperForConditionalGeneration
 from adversarial_attacks.utils import LANGUAGE
 
 
-def map_to_pred(batch, processor, model, device):
+def map_to_pred(batch, processor, model, device, labels):
     audio_arrays = [audio["array"] for audio in batch["audio"]]
     input_features = processor(audio_arrays,
                                sampling_rate=16000,
                                return_tensors="pt").input_features
     predicted_ids = model.generate(input_features.to(device))
     transcription = processor.batch_decode(predicted_ids, normalize=True)
-    labels = [
-        processor.tokenizer._normalize(text) for text in batch["transcription"]
-    ]
+    labels = [processor.tokenizer._normalize(text) for text in batch[labels]]
     batch['text'] = labels
     batch["transcription"] = transcription
     return batch
@@ -45,7 +43,8 @@ def main(conf):
     map_to_pred_func = partial(map_to_pred,
                                processor=processor,
                                model=model,
-                               device=device)
+                               device=device,
+                               labels=conf.data.labels)
 
     result = dataset.map(map_to_pred_func,
                          batched=True,

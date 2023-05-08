@@ -241,8 +241,8 @@ class DataCollatorAttacker:
             # creating labels
             # TODO: fix column mapping
             labels_ids = torch.tensor(
-                self.processor.tokenizer(data["text"])["input_ids"])[None].to(
-                    self.device)
+                self.processor.tokenizer(
+                    data["transcription"])["input_ids"])[None].to(self.device)
 
             samples.requires_grad = True
 
@@ -274,7 +274,7 @@ class DataCollatorAttacker:
                     "array": perturbed_sound.cpu(),
                     "sampling_rate": samples_rate_in
                 },
-                "text": data["text"],
+                "text": data["transcription"],
             }
 
 

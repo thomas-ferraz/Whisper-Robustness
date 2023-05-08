@@ -78,7 +78,7 @@ def main(conf):
     processor = WhisperProcessor.from_pretrained(conf.model)
     processor.feature_extractor = WhisperAttackerFeatureExtractor()
     if lang["model"]:
-        processor.get_decoder_prompt_ids(lang["model"], task="transcribe")
+        processor.get_decoder_prompt_ids(lang["model"], task="  ")
     model = WhisperForConditionalGeneration.from_pretrained(conf.model)
     model.to(device)
 
