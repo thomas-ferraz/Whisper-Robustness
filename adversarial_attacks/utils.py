@@ -1,7 +1,7 @@
 LANGUAGE = {
     "en": {
         "data": "en_us",
-        "model": ""
+        "model": "english"
     },
     "fr": {
         "data": "fr_fr",
