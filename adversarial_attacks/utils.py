@@ -19,4 +19,8 @@ LANGUAGE = {
         "data": "clean",
         "model": ""
     },
+    "fa": {
+        "data": "fa_ir",
+        "model": "persian"
+    },
 }

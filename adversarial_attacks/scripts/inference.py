@@ -24,7 +24,7 @@ def map_to_pred(batch,
     if forced_decoder_ids:
         predicted_ids = model.generate(
             input_features.to(device),
-            forced_decoder_ids=forced_decoder_ids.to(device))
+            forced_decoder_ids=forced_decoder_ids)
     else:
         predicted_ids = model.generate(input_features.to(device))
     transcription = processor.batch_decode(predicted_ids, normalize=True)
