@@ -1,0 +1,9 @@
+lang: fa
+model: openai/whisper-tiny
+data:
+  name: google/fleurs
+  path: ""
+  labels: transcription
+batch_size: 10
+device: cuda
+attack: clean

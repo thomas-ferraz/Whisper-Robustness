@@ -1,0 +1,9 @@
+lang: fr
+model: openai/whisper-tiny
+data:
+  name: google/fleurs
+  path: attaked_fr_35.hf
+  labels: text
+batch_size: 10
+device: cuda
+attack: 35
