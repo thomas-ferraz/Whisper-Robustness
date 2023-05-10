@@ -1,0 +1,10 @@
+lang: en
+model: openai/whisper-small.en
+data:
+  name: google/fleurs
+  path: ""
+attack:
+  iterations: ""
+  epsilon: ""
+  snr: 35
+device: cuda

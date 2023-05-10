@@ -6,4 +6,4 @@ data:
   labels: text
 batch_size: 10
 device: cuda
-attack: clean
+attack: 40
