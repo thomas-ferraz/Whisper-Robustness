@@ -21,4 +21,12 @@ Global results for the experiments can be seen in the figure below.
      style="float: left; margin-right: 10px;" />
 
 ## Samples
-Here you can hear some samples for some of the models.
+Here you can hear some result samples.
+
+||Clean|SNR=40|SNR=35|
+|---|---|---|---|
+|EN-Audio|![FR-Tiny-Clean](https://github.com/thomas-ferraz/Whisper-Robustness/blob/adversarial-attacks/adversarial_attacks/data/samples/FR-Tiny-Clean.wav)|SNR=40|SNR=35|
+|`de nombreux formats courants famille de formats aps par exemple sont egaux a ce rapport d aspect ou s en approchent de pres`|`de nombreux formes d accordant famille de formes a ps par exemple sans egot a sur rapport d aspect au sein rapproche de vrai`|SNR=40|SNR=35|
+
+
+
