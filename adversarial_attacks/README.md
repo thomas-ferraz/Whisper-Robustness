@@ -16,17 +16,18 @@ language.
 ## Results
 Global results for the experiments can be seen in the figure below. 
 
-<img src="https://github.com/thomas-ferraz/Whisper-Robustness/blob/adversarial-attacks/adversarial_attacks/data/wer_model_snr.pdf"
-     alt="Results"
-     style="float: left; margin-right: 10px;" />
+![image](https://github.com/thomas-ferraz/Whisper-Robustness/assets/8398479/dbaaee00-7e89-4000-a330-a9f42a72eba3)
 
 ## Samples
 Here you can hear some result samples.
 
+### Tiny
 ||Clean|SNR=40|SNR=35|
 |---|---|---|---|
-|EN-Audio|![FR-Tiny-Clean](https://github.com/thomas-ferraz/Whisper-Robustness/blob/adversarial-attacks/adversarial_attacks/data/samples/FR-Tiny-Clean.wav)|SNR=40|SNR=35|
-|`de nombreux formats courants famille de formats aps par exemple sont egaux a ce rapport d aspect ou s en approchent de pres`|`de nombreux formes d accordant famille de formes a ps par exemple sans egot a sur rapport d aspect au sein rapproche de vrai`|SNR=40|SNR=35|
+|FR|[FR-Tiny-Clean.wav](adversarial_attacks/data/samples/FR-Tiny-Clean.wav)|[FR-Tiny-40.wav](adversarial_attacks/data/samples/FR-Tiny-40.wav)|[FR-Tiny-35.wav](adversarial_attacks/data/samples/FR-Tiny-35.wav)|
+|`de nombreux formats courants famille de formats aps par exemple sont egaux a ce rapport d aspect ou s en approchent de pres`|`de nombreux formes d accordant famille de formes a ps par exemple sans egot a sur rapport d aspect au sein rapproche de vrai`|`nous sommes au center de la france a l ontario a l ontario`|`nous sommes au mata rain ce que nous sommes a la fin de la fin de la fin de la fin de la fin de la fin de la fin de la fin de la fin de la fin de la fin de la fin de la fin de la fin de...`|
+
+
 
 
 
