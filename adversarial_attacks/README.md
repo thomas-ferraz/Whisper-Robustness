@@ -16,7 +16,7 @@ language.
 ## Results
 Global results for the experiments can be seen in the figure below. 
 
-<img src="adversarial_attacks/data/wer_model_snr.pdf"
+<img src="https://github.com/thomas-ferraz/Whisper-Robustness/blob/adversarial-attacks/adversarial_attacks/data/wer_model_snr.pdf"
      alt="Results"
      style="float: left; margin-right: 10px;" />
 
