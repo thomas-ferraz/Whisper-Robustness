@@ -284,7 +284,7 @@ def main():
         forced_decoder_ids = processor.get_decoder_prompt_ids(
             language=lang_to_whisper[args.lang],
             task="transcribe")
-        model.generation_config.forced_decoder_ids = forced_decoder_ids
+        model.config.forced_decoder_ids = forced_decoder_ids
     else:
         model.config.forced_decoder_ids = None  # To be predicted
     # Remove supressed tokens
